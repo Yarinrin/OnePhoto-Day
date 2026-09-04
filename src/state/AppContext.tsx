@@ -1,6 +1,10 @@
 /**
- * App-wide state: the persisted world, a dispatch, and a toast channel.
- * Hydration happens once on mount; every subsequent change is written back.
+ * App-wide state.
+ *
+ * The reducer still owns the in-memory world, exactly as it did when this was
+ * a local-only prototype. What changed is where that world comes from and
+ * where changes go: in demo mode it's this browser, in live mode it's
+ * Supabase. Screens don't know the difference — they call `commands`.
  */
 
 import {
@@ -14,11 +18,20 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { Session } from '@supabase/supabase-js';
 
+import {
+  DemoBackend,
+  SupabaseBackend,
+  type Backend,
+  type Mode,
+  type PickedImage,
+} from '../lib/backend';
 import { collectOrphanedImages, dataStore } from '../lib/store';
-import { emptyData, type AppData } from '../lib/types';
-import { dayKey } from '../lib/util';
-import { reducer, type Action } from './reducer';
+import { supabase, supabaseConfigured } from '../lib/supabase';
+import { emptyData, type AccentKey, type AppData } from '../lib/types';
+import { dayKey, makeInviteCode } from '../lib/util';
+import { newAlbumAction, findAlbumByCode, newPhoto, reducer, type Action } from './reducer';
 import { referencedImageIds } from './selectors';
 
 export interface Toast {
@@ -27,16 +40,40 @@ export interface Toast {
   tone: 'ok' | 'bad' | 'plain';
 }
 
+/**
+ * Every mutation a screen can make. Async because in live mode each one is a
+ * round trip; demo mode resolves immediately but keeps the same shape.
+ */
+export interface Commands {
+  createAlbum(name: string, accent: AccentKey, cover?: PickedImage): Promise<string>;
+  joinByCode(code: string): Promise<string>;
+  postPhoto(albumId: string, image: PickedImage, caption?: string): Promise<void>;
+  renameAlbum(albumId: string, name: string): Promise<void>;
+  setAlbumAccent(albumId: string, accent: AccentKey): Promise<void>;
+  setAlbumCover(albumId: string, image: PickedImage): Promise<void>;
+  regenerateCode(albumId: string): Promise<void>;
+  leaveAlbum(albumId: string): Promise<void>;
+  deleteAlbum(albumId: string): Promise<void>;
+  renameUser(name: string): Promise<void>;
+  setAvatar(image: PickedImage | null): Promise<void>;
+  refresh(): Promise<void>;
+}
+
 interface AppValue {
   data: AppData;
   ready: boolean;
-  /**
-   * Today's local date key. Held in state rather than read from the clock at
-   * each call site so that it changes at midnight in a tab left open, and so
-   * memoised views can depend on it.
-   */
+  /** null until the user picks demo or signs in. */
+  mode: Mode | null;
+  session: Session | null;
+  /** True while a live command is in flight. */
+  busy: boolean;
   today: string;
+  backend: Backend | null;
   dispatch: (action: Action) => void;
+  commands: Commands;
+  startDemo: () => void;
+  signInWithGoogle: () => Promise<void>;
+  signOut: () => Promise<void>;
   toast: (message: string, tone?: Toast['tone']) => void;
   toasts: Toast[];
   dismissToast: (id: number) => void;
@@ -44,31 +81,106 @@ interface AppValue {
 
 const Ctx = createContext<AppValue | null>(null);
 
+const MODE_KEY = 'opd.mode';
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [data, dispatch] = useReducer(reducer, null, emptyData);
   const [ready, setReady] = useState(false);
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [busy, setBusy] = useState(false);
   const [today, setToday] = useState(dayKey);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
-  const hydrated = useRef(false);
+
+  const backendRef = useRef<Backend | null>(null);
+  const demoHydrated = useRef(false);
+
+  /* ---- Toasts ---- */
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const toast = useCallback(
+    (message: string, tone: Toast['tone'] = 'plain') => {
+      const id = ++toastId.current;
+      setToasts((prev) => [...prev.slice(-2), { id, message, tone }]);
+      window.setTimeout(() => dismissToast(id), 3200);
+    },
+    [dismissToast],
+  );
+
+  /* ---- Session ---- */
 
   useEffect(() => {
-    let alive = true;
-    dataStore.load().then((loaded) => {
-      if (!alive) return;
-      if (loaded) dispatch({ type: 'hydrate', data: loaded });
-      hydrated.current = true;
-      setReady(true);
+    if (!supabase) {
+      // No project configured: demo is the only thing on offer.
+      void bootDemo();
+      return;
+    }
 
-      // Sweep images the world no longer points at. Load is the only moment
-      // this is safe: nothing is mid-flow, so a picked-but-unposted draft
-      // can't be mistaken for an orphan. Best effort — never block the app.
-      void collectOrphanedImages(referencedImageIds(loaded ?? emptyData())).catch(() => {});
+    let alive = true;
+
+    supabase.auth.getSession().then(({ data: { session: found } }) => {
+      if (!alive) return;
+      if (found) {
+        void bootLive(found);
+      } else if (localStorage.getItem(MODE_KEY) === 'demo') {
+        void bootDemo();
+      } else {
+        setReady(true); // show the sign-in screen
+      }
     });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      if (!alive) return;
+      if (event === 'SIGNED_IN' && next) void bootLive(next);
+      if (event === 'SIGNED_OUT') {
+        backendRef.current = null;
+        setSession(null);
+        setMode(null);
+        dispatch({ type: 'reset', data: emptyData() });
+        setReady(true);
+      }
+    });
+
     return () => {
       alive = false;
+      sub.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function bootDemo() {
+    const backend = new DemoBackend();
+    backendRef.current = backend;
+    const loaded = await backend.load();
+    dispatch({ type: 'hydrate', data: loaded });
+    demoHydrated.current = true;
+    setMode('demo');
+    localStorage.setItem(MODE_KEY, 'demo');
+    setReady(true);
+
+    // Sweep images the world no longer points at. Load is the only moment
+    // this is safe: nothing is mid-flow, so a picked-but-unposted draft
+    // can't be mistaken for an orphan. Best effort — never block the app.
+    void collectOrphanedImages(referencedImageIds(loaded)).catch(() => {});
+  }
+
+  async function bootLive(next: Session) {
+    setSession(next);
+    const backend = new SupabaseBackend(next.user.id);
+    backendRef.current = backend;
+    setMode('live');
+    localStorage.setItem(MODE_KEY, 'live');
+    try {
+      dispatch({ type: 'hydrate', data: await backend.load() });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't load your albums", 'bad');
+    }
+    setReady(true);
+  }
 
   /* ---- Midnight ---- */
 
@@ -105,29 +217,258 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Persist after hydration only, so we never overwrite storage with the
-  // empty initial state during the first paint.
+  /* ---- Demo mode persists the whole world after every change ---- */
+
   useEffect(() => {
-    if (!hydrated.current) return;
+    if (mode !== 'demo' || !demoHydrated.current) return;
     void dataStore.save(data);
-  }, [data]);
+  }, [data, mode]);
 
-  const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  /* ---- Remember the album the bottom bar acts on, across reloads ---- */
 
-  const toast = useCallback(
-    (message: string, tone: Toast['tone'] = 'plain') => {
-      const id = ++toastId.current;
-      setToasts((prev) => [...prev.slice(-2), { id, message, tone }]);
-      window.setTimeout(() => dismissToast(id), 3200);
+  useEffect(() => {
+    if (mode === 'live' && data.activeAlbumId) {
+      localStorage.setItem('opd.activeAlbum', data.activeAlbumId);
+    }
+  }, [mode, data.activeAlbumId]);
+
+  /* ---- Commands ---- */
+
+  const refresh = useCallback(async () => {
+    const backend = backendRef.current;
+    if (!backend || backend.mode !== 'live') return;
+    try {
+      dispatch({ type: 'hydrate', data: await backend.load() });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not refresh', 'bad');
+    }
+  }, [toast]);
+
+  /** Runs a live command, then reloads; surfaces failures rather than
+      leaving the screen showing something that never actually happened. */
+  const run = useCallback(
+    async <T,>(fn: (backend: Backend) => Promise<T>): Promise<T> => {
+      const backend = backendRef.current;
+      if (!backend) throw new Error('Not ready yet.');
+      setBusy(true);
+      try {
+        const result = await fn(backend);
+        if (backend.mode === 'live') await refresh();
+        return result;
+      } finally {
+        setBusy(false);
+      }
     },
-    [dismissToast],
+    [refresh],
   );
 
+  /** Stores a demo image, warning if the device can only hold it in memory. */
+  const storeDemoImage = useCallback(
+    async (backend: DemoBackend, image: PickedImage) => {
+      const { ref, durable } = await backend.storeImage(image);
+      if (!durable) {
+        toast("Saved for now, but this device won't keep it after a reload", 'bad');
+      }
+      return ref;
+    },
+    [toast],
+  );
+
+  const commands = useMemo<Commands>(
+    () => ({
+      async createAlbum(name, accent, cover) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          return run((b) => b.createAlbum(name, accent, cover));
+        }
+        // Demo: the reducer makes the album, the image store keeps the cover.
+        let coverRef;
+        if (cover && backend instanceof DemoBackend) {
+          coverRef = await storeDemoImage(backend, cover);
+        }
+        const action = newAlbumAction(name, accent, coverRef);
+        dispatch(action);
+        return action.type === 'createAlbum' ? action.albumId : '';
+      },
+
+      async joinByCode(code) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          const { albumId } = await run((b) => b.joinByCode(code));
+          return albumId;
+        }
+        const album = findAlbumByCode(data, code);
+        if (!album) {
+          throw new Error("We couldn't find an album with that code. Check it with your friend?");
+        }
+        if (album.memberIds.includes(data.currentUserId ?? '')) {
+          throw new Error(`You're already in ${album.name}.`);
+        }
+        dispatch({ type: 'joinAlbum', albumId: album.id });
+        return album.id;
+      },
+
+      async postPhoto(albumId, image, caption) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          await run((b) => b.postPhoto(albumId, image, caption));
+          return;
+        }
+        if (!(backend instanceof DemoBackend) || !data.currentUserId) return;
+        const ref = await storeDemoImage(backend, image);
+        dispatch({
+          type: 'postPhoto',
+          photo: newPhoto(albumId, data.currentUserId, ref, caption),
+        });
+      },
+
+      async renameAlbum(albumId, name) {
+        const backend = backendRef.current;
+        // Optimistic either way: typing shouldn't wait on a round trip.
+        dispatch({ type: 'renameAlbum', albumId, name });
+        if (backend?.mode === 'live') await backend.renameAlbum(albumId, name);
+      },
+
+      async setAlbumAccent(albumId, accent) {
+        const backend = backendRef.current;
+        dispatch({ type: 'setAlbumAccent', albumId, accent });
+        if (backend?.mode === 'live') await backend.setAlbumAccent(albumId, accent);
+      },
+
+      async setAlbumCover(albumId, image) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          await run((b) => b.setAlbumCover(albumId, image));
+          return;
+        }
+        if (!(backend instanceof DemoBackend)) return;
+        const ref = await storeDemoImage(backend, image);
+        dispatch({ type: 'setAlbumCover', albumId, cover: ref });
+      },
+
+      async regenerateCode(albumId) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          await run((b) => b.regenerateCode(albumId));
+          return;
+        }
+        dispatch({ type: 'regenerateCode', albumId, code: makeInviteCode() });
+      },
+
+      async leaveAlbum(albumId) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          await run((b) => b.leaveAlbum(albumId));
+          return;
+        }
+        dispatch({ type: 'leaveAlbum', albumId });
+      },
+
+      async deleteAlbum(albumId) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          await run((b) => b.deleteAlbum(albumId));
+          return;
+        }
+        dispatch({ type: 'deleteAlbum', albumId });
+      },
+
+      async renameUser(name) {
+        const backend = backendRef.current;
+        dispatch({ type: 'renameUser', name });
+        if (backend?.mode === 'live') await backend.renameUser(name);
+      },
+
+      async setAvatar(image) {
+        const backend = backendRef.current;
+        if (backend?.mode === 'live') {
+          await run((b) => b.setAvatar(image));
+          return;
+        }
+        if (!(backend instanceof DemoBackend)) return;
+        if (!image) {
+          dispatch({ type: 'setUserAvatar', imageId: undefined });
+          return;
+        }
+        const ref = await storeDemoImage(backend, image);
+        if (ref.kind === 'stored') dispatch({ type: 'setUserAvatar', imageId: ref.id });
+      },
+
+      refresh,
+    }),
+    [data, refresh, run, storeDemoImage],
+  );
+
+  /* ---- Entering / leaving ---- */
+
+  const startDemo = useCallback(() => {
+    void bootDemo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    if (!supabase) {
+      toast('This build has no Supabase project configured.', 'bad');
+      return;
+    }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) toast(error.message, 'bad');
+  }, [toast]);
+
+  const signOut = useCallback(async () => {
+    localStorage.removeItem(MODE_KEY);
+    if (supabase) await supabase.auth.signOut();
+    backendRef.current = null;
+    setSession(null);
+    setMode(null);
+    dispatch({ type: 'reset', data: emptyData() });
+  }, []);
+
+  /* ---- Live mode: pick up other people's photos on return ---- */
+
+  useEffect(() => {
+    if (mode !== 'live') return;
+    const onFocus = () => void refresh();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [mode, refresh]);
+
   const value = useMemo(
-    () => ({ data, ready, today, dispatch, toast, toasts, dismissToast }),
-    [data, ready, today, toast, toasts, dismissToast],
+    () => ({
+      data,
+      ready,
+      mode,
+      session,
+      busy,
+      today,
+      backend: backendRef.current,
+      dispatch,
+      commands,
+      startDemo,
+      signInWithGoogle,
+      signOut,
+      toast,
+      toasts,
+      dismissToast,
+    }),
+    [
+      data,
+      ready,
+      mode,
+      session,
+      busy,
+      today,
+      commands,
+      startDemo,
+      signInWithGoogle,
+      signOut,
+      toast,
+      toasts,
+      dismissToast,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -138,3 +479,5 @@ export function useApp(): AppValue {
   if (!v) throw new Error('useApp must be used inside AppProvider');
   return v;
 }
+
+export { supabaseConfigured };

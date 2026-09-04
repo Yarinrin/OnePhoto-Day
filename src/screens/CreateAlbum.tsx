@@ -7,37 +7,29 @@ import { IconCheck, IconCopy, IconImage, IconPlus, IconShare } from '../componen
 import { PageHeader, Screen } from '../components/Shell';
 import { Button, TextField, useCopy } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
-import { imageStore } from '../lib/store';
-import { ACCENTS, type AccentKey, type ImageRef } from '../lib/types';
-import { uid } from '../lib/util';
+import { ACCENTS, type AccentKey } from '../lib/types';
 import { useApp } from '../state/AppContext';
-import { newAlbumAction } from '../state/reducer';
 import { useRouter } from '../state/router';
 import { shareInvite } from '../lib/share';
 
 export function CreateAlbum() {
-  const { data, dispatch, toast } = useApp();
+  const { data, commands, toast, busy } = useApp();
   const { back } = useRouter();
 
   const [name, setName] = useState('');
   const [accent, setAccent] = useState<AccentKey>('yellow');
-  const [cover, setCover] = useState<ImageRef | null>(null);
+  // Kept in memory until the album is actually created — a cover picked for
+  // an album that never gets made shouldn't be stored or uploaded anywhere.
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
 
   const picker = useImagePicker(
-    async (dataUrl) => {
-      const id = uid('img');
-      const durable = await imageStore.put(id, dataUrl);
-      if (!durable) toast("This device won't keep the cover after a reload", 'bad');
-      setCover({ kind: 'stored', id });
-      setCoverSrc(dataUrl);
-    },
+    (dataUrl) => setCoverSrc(dataUrl),
     (message) => toast(message, 'bad'),
   );
 
-  const submit = () => {
+  const submit = async () => {
     const trimmed = name.trim();
     if (trimmed.length < 2) {
       setError('Give it a name your friends will recognise.');
@@ -50,9 +42,16 @@ export function CreateAlbum() {
       setError('You already have an album with that name.');
       return;
     }
-    const action = newAlbumAction(trimmed, accent, cover ?? undefined);
-    dispatch(action);
-    setCreatedId(action.type === 'createAlbum' ? action.albumId : null);
+    try {
+      const albumId = await commands.createAlbum(
+        trimmed,
+        accent,
+        coverSrc ? { dataUrl: coverSrc } : undefined,
+      );
+      setCreatedId(albumId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That album couldn't be created.");
+    }
   };
 
   if (createdId) return <AlbumCreated albumId={createdId} />;
@@ -73,7 +72,7 @@ export function CreateAlbum() {
             setName(e.target.value);
             if (error) setError(null);
           }}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          onKeyDown={(e) => e.key === 'Enter' && void submit()}
         />
 
         <div>
@@ -121,8 +120,14 @@ export function CreateAlbum() {
           </button>
         </div>
 
-        <Button variant="primary" size="lg" block onClick={submit} disabled={picker.busy}>
-          {picker.busy ? 'Working…' : 'Create album'}
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          onClick={() => void submit()}
+          disabled={picker.busy || busy}
+        >
+          {busy ? 'Creating…' : picker.busy ? 'Working…' : 'Create album'}
         </Button>
       </div>
     </Screen>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { CameraMark } from './components/Icons';
 import { Toasts } from './components/Shell';
+import type { Mode } from './lib/backend';
 import { useApp } from './state/AppContext';
 import { useRouter, type Route } from './state/router';
 import { AlbumHome } from './screens/AlbumHome';
@@ -16,10 +17,12 @@ import { Profile } from './screens/Profile';
 import { Timeline } from './screens/Timeline';
 import { TodayView } from './screens/TodayView';
 import { Upload } from './screens/Upload';
+import { Welcome } from './screens/Welcome';
 
 export function App() {
-  const { data, ready } = useApp();
+  const { data, ready, mode } = useApp();
   const { route, direction, replace } = useRouter();
+  // In live mode the account *is* the identity, so there's no name step.
   const signedIn = Boolean(data.currentUserId);
 
   // Whether this visit began with a name already on file. Signing in *during*
@@ -28,13 +31,13 @@ export function App() {
   const returning = useRef<boolean | null>(null);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || mode !== 'demo') return;
     // Latched the first time the stored world is available, never after.
     if (returning.current === null) returning.current = signedIn;
 
     if (!signedIn && route.name !== 'onboarding') replace({ name: 'onboarding' });
     if (signedIn && route.name === 'onboarding' && returning.current) replace({ name: 'home' });
-  }, [ready, signedIn, route.name, replace]);
+  }, [ready, mode, signedIn, route.name, replace]);
 
   if (!ready) {
     return (
@@ -49,8 +52,8 @@ export function App() {
       <DeskPanel />
       <div className="phone">
         {/* Keying on the path restarts the entrance animation per screen. */}
-        <div className={`page page--${direction}`} key={pageKey(route)}>
-          {render(route, signedIn)}
+        <div className={`page page--${direction}`} key={mode ? pageKey(route) : 'welcome'}>
+          {mode === null ? <Welcome /> : render(route, signedIn, mode)}
         </div>
         <Toasts />
       </div>
@@ -91,12 +94,13 @@ function pageKey(route: Route): string {
   return route.name === 'today' ? `today:${'id' in route ? route.id : ''}` : route.name + ('id' in route ? `:${route.id}` : '');
 }
 
-function render(route: Route, signedIn: boolean) {
-  if (!signedIn) return <Onboarding />;
+function render(route: Route, signedIn: boolean, mode: Mode) {
+  // Demo mode still asks for a name; live mode already has one from Google.
+  if (!signedIn) return mode === 'demo' ? <Onboarding /> : <Welcome />;
 
   switch (route.name) {
     case 'onboarding':
-      return <Onboarding />;
+      return mode === 'demo' ? <Onboarding /> : <Home />;
     case 'home':
       return <Home />;
     case 'create':

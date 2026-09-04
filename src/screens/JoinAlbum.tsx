@@ -16,7 +16,7 @@ import { albumPhotoCount, members } from '../state/selectors';
 const CODE_LENGTH = 6;
 
 export function JoinAlbum() {
-  const { data, dispatch } = useApp();
+  const { data, commands, mode, busy } = useApp();
   const { push, back } = useRouter();
 
   const [code, setCode] = useState('');
@@ -31,15 +31,19 @@ export function JoinAlbum() {
   };
 
   /**
-   * Returns the album a code resolves to, reporting why it doesn't when it
-   * can't. Called on the sixth character for instant feedback, and again on
-   * the button — joining is always a deliberate press, never a side effect of
-   * typing, so the preview below actually gets a chance to be read.
+   * Demo mode can check a code locally, so it previews the album before you
+   * commit. Live mode can't: the security rules hide an album from anyone who
+   * isn't in it yet, which is the point — so there the server answers when you
+   * actually press Join.
    */
   const resolve = (raw: string) => {
     const clean = normalizeCode(raw);
     if (clean.length < CODE_LENGTH) {
       fail('That code looks short — six characters, like BAND-77.');
+      return null;
+    }
+    if (mode === 'live') {
+      setError(null);
       return null;
     }
     const album = findAlbumByCode(data, clean);
@@ -55,18 +59,25 @@ export function JoinAlbum() {
     return album;
   };
 
-  const join = (raw: string) => {
-    const album = resolve(raw);
-    if (!album) return;
-    dispatch({ type: 'joinAlbum', albumId: album.id });
-    setJoinedId(album.id);
+  const join = async (raw: string) => {
+    if (normalizeCode(raw).length < CODE_LENGTH) {
+      fail('That code looks short — six characters, like BAND-77.');
+      return;
+    }
+    try {
+      setJoinedId(await commands.joinByCode(raw));
+    } catch (err) {
+      fail(err instanceof Error ? err.message : "That code didn't work.");
+    }
   };
 
   if (joinedId) return <JoinedAlbum albumId={joinedId} />;
 
   // Live preview once the code is complete and valid.
   const preview =
-    normalizeCode(code).length === CODE_LENGTH ? findAlbumByCode(data, code) : undefined;
+    mode === 'demo' && normalizeCode(code).length === CODE_LENGTH
+      ? findAlbumByCode(data, code)
+      : undefined;
   const previewJoinable = preview && !preview.memberIds.includes(data.currentUserId ?? '');
 
   return (
@@ -103,30 +114,34 @@ export function JoinAlbum() {
           variant="primary"
           size="lg"
           block
-          disabled={code.length < CODE_LENGTH}
-          onClick={() => join(code)}
+          disabled={code.length < CODE_LENGTH || busy}
+          onClick={() => void join(code)}
         >
-          {preview && previewJoinable ? `Join ${preview.name}` : 'Join album'}
+          {busy ? 'Joining…' : preview && previewJoinable ? `Join ${preview.name}` : 'Join album'}
         </Button>
 
         <p className="join__hint">
           Codes come from whoever made the album.
-          <br />
-          Trying it out? Tap{' '}
-          {DEMO_INVITE_CODES.map((demo, i) => (
-            <span key={demo}>
-              {i > 0 && ' or '}
-              <code
-                role="button"
-                tabIndex={0}
-                onClick={() => setCode(normalizeCode(demo))}
-                onKeyDown={(e) => e.key === 'Enter' && setCode(normalizeCode(demo))}
-              >
-                {demo}
-              </code>
-            </span>
-          ))}
-          .
+          {mode === 'demo' && (
+            <>
+              <br />
+              Trying it out? Tap{' '}
+              {DEMO_INVITE_CODES.map((demo, i) => (
+                <span key={demo}>
+                  {i > 0 && ' or '}
+                  <code
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setCode(normalizeCode(demo))}
+                    onKeyDown={(e) => e.key === 'Enter' && setCode(normalizeCode(demo))}
+                  >
+                    {demo}
+                  </code>
+                </span>
+              ))}
+              .
+            </>
+          )}
         </p>
 
         <Button variant="ghost" block onClick={() => push({ name: 'create' })}>

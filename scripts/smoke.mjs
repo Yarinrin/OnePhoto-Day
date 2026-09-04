@@ -52,6 +52,11 @@ const shot = async (page, name) => {
 /** Runs onboarding and lands on the home screen with the demo world seeded. */
 async function onboard(page, name = 'Yarin') {
   await page.goto(BASE, { waitUntil: 'networkidle' });
+  // The front door now offers a real account or the local demo; these checks
+  // all exercise demo mode, which is the one that runs without a browser
+  // able to complete Google's consent flow.
+  await page.getByRole('button', { name: /Try the demo/ }).click();
+  await page.waitForTimeout(600);
   await page.getByRole('button', { name: 'Start' }).click();
   await page.locator('.field__input').first().fill(name);
   await page.getByRole('button', { name: 'Continue' }).click();
@@ -84,8 +89,13 @@ const myPhotosToday = (page, albumName) =>
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await shot(page, '01-brand');
-  check('onboarding shows the brand', await page.locator('.ob__tagline').isVisible());
+  await shot(page, '01-welcome');
+  check('the welcome screen shows the brand', await page.locator('.ob__tagline').isVisible());
+  check(
+    'the welcome screen offers both ways in',
+    (await page.getByRole('button', { name: /Sign in with Google/ }).count()) === 1 &&
+      (await page.getByRole('button', { name: /Try the demo/ }).count()) === 1,
+  );
 
   await onboard(page);
   await shot(page, '02-home');
@@ -386,6 +396,9 @@ for (const [label, opts] of [
   await page.locator('.nav__shutter').click();
   await page.waitForTimeout(500);
   await page.locator('input[type=file]').first().setInputFiles(PNG_PATH);
+  await page.waitForTimeout(800);
+  // Nothing is written until Post — that's when a broken store must speak up.
+  await page.getByRole('button', { name: /^Post photo$/ }).click();
   await page.waitForTimeout(1000);
 
   const warned = await page.locator('.toast--bad').count();

@@ -14,11 +14,14 @@ export interface Person {
 /**
  * Where a photo's pixels live.
  * `generated` scenes are drawn on the fly from a seed, so demo data costs no
- * storage; `stored` images are user uploads kept in the image store.
+ * storage; `stored` images are uploads kept in the browser's image store
+ * (demo mode); `remote` images are objects in the Supabase storage bucket,
+ * addressed by their path within it.
  */
 export type ImageRef =
   | { kind: 'generated'; scene: string; seed: number }
-  | { kind: 'stored'; id: string };
+  | { kind: 'stored'; id: string }
+  | { kind: 'remote'; path: string };
 
 export interface Photo {
   id: string;

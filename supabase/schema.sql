@@ -147,6 +147,49 @@ $$;
 
 
 -- ============================================================================
+-- 3b. CREATING AN ALBUM
+--
+-- Also one privileged step, for a subtler reason than joining. Doing it as
+-- two plain inserts deadlocks: album_members deliberately has no INSERT
+-- policy (one allowing `user_id = auth.uid()` would let anyone holding an
+-- album's id add themselves and skip the invite code entirely), and
+-- albums_read requires membership, so the creator couldn't even read back the
+-- row they just wrote. The album would exist, invisible to everyone, forever.
+-- ============================================================================
+
+create or replace function public.create_album(
+  p_name   text,
+  p_accent text,
+  p_code   text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_id uuid;
+  me uuid := auth.uid();
+begin
+  if me is null then
+    raise exception 'must be signed in to create an album';
+  end if;
+  if coalesce(trim(p_name), '') = '' then
+    raise exception 'an album needs a name';
+  end if;
+
+  insert into albums (name, accent, invite_code, owner_id)
+  values (trim(p_name), coalesce(p_accent, 'yellow'), p_code, me)
+  returning id into new_id;
+
+  insert into album_members (album_id, user_id) values (new_id, me);
+
+  return new_id;
+end;
+$$;
+
+
+-- ============================================================================
 -- 4. SECURITY RULES (Row Level Security)
 --
 -- Without these, anyone could read everyone's photos. With them, the database
@@ -367,8 +410,10 @@ revoke execute on function public.handle_new_user() from public, anon, authentic
 revoke execute on function public.is_member(uuid) from public, anon, authenticated;
 revoke execute on function public.shares_album_with(uuid) from public, anon, authenticated;
 revoke execute on function public.join_album_by_code(text) from public, anon, authenticated;
+revoke execute on function public.create_album(text, text, text) from public, anon, authenticated;
 
 grant execute on function public.is_member(uuid) to authenticated;
+grant execute on function public.create_album(text, text, text) to authenticated;
 grant execute on function public.shares_album_with(uuid) to authenticated;
 grant execute on function public.join_album_by_code(text) to authenticated;
 
@@ -386,16 +431,54 @@ insert into storage.buckets (id, name, public)
 values ('photos', 'photos', false)
 on conflict (id) do nothing;
 
+-- Album photos live at <album id>/<photo id>.jpg — the folder name IS the
+-- album id, which is how these rules know who's allowed in. Avatars share the
+-- bucket under avatars/<user id>/, so both rules exclude that prefix: casting
+-- the literal 'avatars' to uuid would throw.
 drop policy if exists photos_bucket_read on storage.objects;
 create policy photos_bucket_read on storage.objects for select
+  to authenticated
   using (
     bucket_id = 'photos'
+    and (storage.foldername(name))[1] <> 'avatars'
     and public.is_member((storage.foldername(name))[1]::uuid)
   );
 
 drop policy if exists photos_bucket_write on storage.objects;
 create policy photos_bucket_write on storage.objects for insert
+  to authenticated
   with check (
     bucket_id = 'photos'
+    and (storage.foldername(name))[1] <> 'avatars'
     and public.is_member((storage.foldername(name))[1]::uuid)
+  );
+
+drop policy if exists photos_bucket_delete_own on storage.objects;
+create policy photos_bucket_delete_own on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'photos' and owner = auth.uid());
+
+-- Avatars: anyone signed in may look at one (you need to see the faces of
+-- people in your albums), but you may only write into your own folder.
+drop policy if exists avatars_read on storage.objects;
+create policy avatars_read on storage.objects for select
+  to authenticated
+  using (bucket_id = 'photos' and (storage.foldername(name))[1] = 'avatars');
+
+drop policy if exists avatars_write_own on storage.objects;
+create policy avatars_write_own on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = 'avatars'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+drop policy if exists avatars_update_own on storage.objects;
+create policy avatars_update_own on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = 'avatars'
+    and (storage.foldername(name))[2] = auth.uid()::text
   );

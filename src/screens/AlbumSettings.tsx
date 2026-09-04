@@ -17,16 +17,14 @@ import { PageHeader, Screen } from '../components/Shell';
 import { Button, Modal, TextField, useCopy } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
 import { shareInvite } from '../lib/share';
-import { imageStore } from '../lib/store';
 import { ACCENTS, type AccentKey } from '../lib/types';
-import { makeInviteCode, uid } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { albumPhotoCount, members } from '../state/selectors';
 import { NotFound } from './NotFound';
 
 export function AlbumSettings({ albumId }: { albumId: string }) {
-  const { data, dispatch, toast } = useApp();
+  const { data, commands, toast } = useApp();
   const { push, back, replace } = useRouter();
   const [copied, copy] = useCopy();
   const [confirm, setConfirm] = useState<'leave' | 'delete' | null>(null);
@@ -36,13 +34,8 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
 
   const picker = useImagePicker(
     async (dataUrl) => {
-      const id = uid('img');
-      const durable = await imageStore.put(id, dataUrl);
-      dispatch({ type: 'setAlbumCover', albumId, cover: { kind: 'stored', id } });
-      toast(
-        durable ? 'Cover updated' : "Cover set, but this device won't keep it after a reload",
-        durable ? 'ok' : 'bad',
-      );
+      await commands.setAlbumCover(albumId, { dataUrl });
+      toast('Cover updated', 'ok');
     },
     (message) => toast(message, 'bad'),
   );
@@ -66,7 +59,7 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
           label="Album name"
           value={album.name}
           maxLength={28}
-          onChange={(e) => dispatch({ type: 'renameAlbum', albumId, name: e.target.value })}
+          onChange={(e) => void commands.renameAlbum(albumId, e.target.value)}
         />
 
         <div>
@@ -80,7 +73,7 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
                 data-accent={key}
                 aria-label={key}
                 aria-pressed={album.accent === key}
-                onClick={() => dispatch({ type: 'setAlbumAccent', albumId, accent: key })}
+                onClick={() => void commands.setAlbumAccent(albumId, key)}
               >
                 {album.accent === key && <IconCheck size={20} strokeWidth={3.2} />}
               </button>
@@ -145,9 +138,13 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
           {isOwner && (
             <button
               className="row-item"
-              onClick={() => {
-                dispatch({ type: 'regenerateCode', albumId, code: makeInviteCode() });
-                toast('New invite code generated', 'ok');
+              onClick={async () => {
+                try {
+                  await commands.regenerateCode(albumId);
+                  toast('New invite code generated', 'ok');
+                } catch (err) {
+                  toast(err instanceof Error ? err.message : 'Could not change the code', 'bad');
+                }
               }}
             >
               <span className="row-item__icon">
@@ -211,11 +208,16 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
             <Button
               variant="danger"
               block
-              onClick={() => {
-                dispatch({ type: 'leaveAlbum', albumId });
-                setConfirm(null);
-                toast(`You left ${album.name}`);
-                replace({ name: 'home' });
+              onClick={async () => {
+                const name = album.name;
+                try {
+                  await commands.leaveAlbum(albumId);
+                  setConfirm(null);
+                  toast(`You left ${name}`);
+                  replace({ name: 'home' });
+                } catch (err) {
+                  toast(err instanceof Error ? err.message : 'Could not leave', 'bad');
+                }
               }}
             >
               Yes, leave
@@ -239,12 +241,16 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
             <Button
               variant="danger"
               block
-              onClick={() => {
+              onClick={async () => {
                 const name = album.name;
-                dispatch({ type: 'deleteAlbum', albumId });
-                setConfirm(null);
-                toast(`${name} deleted`);
-                replace({ name: 'home' });
+                try {
+                  await commands.deleteAlbum(albumId);
+                  setConfirm(null);
+                  toast(`${name} deleted`);
+                  replace({ name: 'home' });
+                } catch (err) {
+                  toast(err instanceof Error ? err.message : 'Could not delete', 'bad');
+                }
               }}
             >
               Delete for everyone

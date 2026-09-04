@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import {
   IconCamera,
   IconClock,
+  IconExit,
   IconImage,
   IconPlus,
   IconTrash,
@@ -14,31 +15,30 @@ import { useImageSrc } from '../components/PhotoImage';
 import { PageHeader, Screen } from '../components/Shell';
 import { Avatar, Button, IconButton, Modal, TextField } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
-import { dataStore, imageStore } from '../lib/store';
-import { uid } from '../lib/util';
-import { emptyData } from '../lib/types';
+import { dataStore } from '../lib/store';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { currentUser, myAlbums, personAlbumStreak, personStreak } from '../state/selectors';
 
 export function Profile() {
-  const { data, dispatch, toast, today } = useApp();
+  const { data, dispatch, commands, toast, today, mode, signOut } = useApp();
   const { push, replace } = useRouter();
   const me = currentUser(data);
   const albums = useMemo(() => myAlbums(data), [data]);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const avatar = useImageSrc(me?.avatarImageId ? { kind: 'stored', id: me.avatarImageId } : null);
+  const avatar = useImageSrc(
+    me?.avatarImageId
+      ? mode === 'live'
+        ? { kind: 'remote', path: me.avatarImageId }
+        : { kind: 'stored', id: me.avatarImageId }
+      : null,
+  );
 
   const picker = useImagePicker(
     async (dataUrl) => {
-      const id = uid('img');
-      const durable = await imageStore.put(id, dataUrl);
-      dispatch({ type: 'setUserAvatar', imageId: id });
-      toast(
-        durable ? 'Profile photo updated' : "Photo set, but this device won't keep it",
-        durable ? 'ok' : 'bad',
-      );
+      await commands.setAvatar({ dataUrl });
+      toast('Profile photo updated', 'ok');
     },
     (message) => toast(message, 'bad'),
   );
@@ -148,7 +148,7 @@ export function Profile() {
             label="Name"
             value={me.name}
             maxLength={24}
-            onChange={(e) => dispatch({ type: 'renameUser', name: e.target.value })}
+            onChange={(e) => void commands.renameUser(e.target.value)}
             hint="Shown next to your photos."
           />
         </div>
@@ -168,8 +168,8 @@ export function Profile() {
           {me.avatarImageId && (
             <button
               className="row-item"
-              onClick={() => {
-                dispatch({ type: 'setUserAvatar', imageId: undefined });
+              onClick={async () => {
+                await commands.setAvatar(null);
                 toast('Back to initials');
               }}
             >
@@ -237,15 +237,29 @@ export function Profile() {
 
       <div className="rows">
         <div className="rows__group">
-          <button className="row-item row-item--danger" onClick={() => setConfirmReset(true)}>
-            <span className="row-item__icon">
-              <IconTrash size={17} />
-            </span>
-            <span className="row-item__mid">
-              <span className="row-item__label">Start over</span>
-              <span className="row-item__value">Clear everything on this device</span>
-            </span>
-          </button>
+          {mode === 'live' ? (
+            <button className="row-item row-item--danger" onClick={() => void signOut()}>
+              <span className="row-item__icon">
+                <IconExit size={17} />
+              </span>
+              <span className="row-item__mid">
+                <span className="row-item__label">Sign out</span>
+                <span className="row-item__value">
+                  Your albums stay put — sign back in any time
+                </span>
+              </span>
+            </button>
+          ) : (
+            <button className="row-item row-item--danger" onClick={() => setConfirmReset(true)}>
+              <span className="row-item__icon">
+                <IconTrash size={17} />
+              </span>
+              <span className="row-item__mid">
+                <span className="row-item__label">Start over</span>
+                <span className="row-item__value">Clear everything on this device</span>
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -264,8 +278,8 @@ export function Profile() {
               block
               onClick={async () => {
                 await dataStore.clear();
-                dispatch({ type: 'reset', data: emptyData() });
                 setConfirmReset(false);
+                await signOut();
                 replace({ name: 'onboarding' });
               }}
             >

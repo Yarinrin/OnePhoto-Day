@@ -183,21 +183,38 @@ with a rollback-wrapped insert into `auth.users` — simulating a real Google
 sign-in — confirming the trigger still creates a profile row under the
 tightened permissions before any of it was applied for real.
 
+## Two modes
+
+The app opens on a front door with two ways in.
+
+**Demo** — everything in this browser: `localStorage` plus IndexedDB, seeded
+with a fake world of four albums and months of history. No account, nothing
+shared, nothing leaves the device. This is what the smoke suite exercises,
+since a headless browser can't complete Google's consent screen.
+
+**Live** — a real Google account, a shared Postgres database, photos in a
+private storage bucket. Albums sync between phones; the invite code becomes
+the only way into someone else's album.
+
+`lib/backend.ts` holds both behind one interface. Screens never touch either —
+they call `commands` on the app context, which forwards to whichever backend
+is active. That's what let live mode land without rewriting a single screen.
+
+The reducer still owns the in-memory world in both modes. In demo mode it also
+*is* the source of truth; in live mode it's a local mirror that each command
+refreshes from the server after writing.
+
 ## Known limits
 
-This is a single-device prototype. There is no server, so albums are **not
-actually shared** — each browser holds its own separate world, and the demo
-join codes (`BAND-77`, `FLAT-24`) work because those albums are seeded into
-your own storage. Two real people cannot share an album, and there is no
-account to sign in with on a second device.
+Photos load in one page of up to 2000 rows — fine for a friend group, not for
+years of a large album. Real pagination is the obvious next step.
 
 The notification toggles store a real preference but send nothing; delivery
-needs a server. The Profile screen says so rather than implying otherwise.
+needs a scheduled job and push credentials. The Profile screen says so rather
+than implying otherwise.
 
-Making it real means adding identity, a shared database, object storage for the
-photo files, and server-side enforcement of the daily rule — in Postgres terms,
-`UNIQUE (album_id, author_id, day)`, which is the same rule the reducer keeps
-locally, in the one place a client can't bypass.
+Live mode has no offline queue: post something with no connection and it fails
+rather than sending later.
 
 ## Accessibility
 

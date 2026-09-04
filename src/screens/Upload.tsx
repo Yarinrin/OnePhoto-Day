@@ -12,11 +12,8 @@ import { IconCamera, IconCheck, IconClock, IconImage, IconRefresh, Sparkle } fro
 import { PageHeader, Screen } from '../components/Shell';
 import { Avatar, Button, EmptyState, TextArea } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
-import { imageStore } from '../lib/store';
-import type { ImageRef } from '../lib/types';
-import { formatDayLong, formatTime, timeUntilTomorrow, uid } from '../lib/util';
+import { formatDayLong, formatTime, timeUntilTomorrow } from '../lib/util';
 import { useApp } from '../state/AppContext';
-import { newPhoto } from '../state/reducer';
 import { useRouter } from '../state/router';
 import { currentUser, hasPostedToday, personAlbumStreak, todayState } from '../state/selectors';
 import { NotFound } from './NotFound';
@@ -24,7 +21,7 @@ import { NotFound } from './NotFound';
 type Stage = 'pick' | 'preview' | 'done';
 
 export function Upload({ albumId }: { albumId: string }) {
-  const { data, dispatch, toast, today } = useApp();
+  const { data, commands, toast, today, busy } = useApp();
   const { push, back, replace } = useRouter();
 
   const album = data.albums[albumId];
@@ -32,21 +29,15 @@ export function Upload({ albumId }: { albumId: string }) {
   const already = album && me ? hasPostedToday(data, album.id, me.id) : false;
 
   const [stage, setStage] = useState<Stage>('pick');
-  const [preview, setPreview] = useState<{ src: string; ref: ImageRef } | null>(null);
+  // Held in memory only. Nothing is written or uploaded until Post is pressed,
+  // so abandoning the flow leaves nothing behind to clean up.
+  const [preview, setPreview] = useState<{ src: string } | null>(null);
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
 
   const picker = useImagePicker(
-    async (dataUrl) => {
-      const id = uid('img');
-      // A failed write must stop the flow here. Advancing to the preview
-      // would show the user a photo that was never saved, and posting it
-      // would leave a photo record pointing at nothing.
-      const durable = await imageStore.put(id, dataUrl);
-      if (!durable) {
-        toast("Saved for now, but this device won't keep it after a reload", 'bad');
-      }
-      setPreview({ src: dataUrl, ref: { kind: 'stored', id } });
+    (dataUrl) => {
+      setPreview({ src: dataUrl });
       setStage('preview');
     },
     (message) => toast(message, 'bad'),
@@ -130,20 +121,24 @@ export function Upload({ albumId }: { albumId: string }) {
   }
 
   /* ---- Post it ---- */
-  const post = () => {
+  const post = async () => {
     if (!preview) return;
-    setPosting(true);
     // Guard the race between opening this screen and pressing the button.
+    // The database enforces the same rule again; this is just a faster, and
+    // friendlier, way to hear about it.
     if (hasPostedToday(data, album.id, me.id)) {
-      setPosting(false);
       toast("You've already posted to this album today", 'bad');
       return;
     }
-    dispatch({ type: 'postPhoto', photo: newPhoto(album.id, me.id, preview.ref, caption) });
-    window.setTimeout(() => {
-      setPosting(false);
+    setPosting(true);
+    try {
+      await commands.postPhoto(album.id, { dataUrl: preview.src }, caption);
       setStage('done');
-    }, 260);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "That photo didn't post", 'bad');
+    } finally {
+      setPosting(false);
+    }
   };
 
   /* ---- Choose / preview ---- */
@@ -212,7 +207,13 @@ export function Upload({ albumId }: { albumId: string }) {
             />
 
             <div className="stack" style={{ gap: 12 }}>
-              <Button variant="primary" size="lg" block onClick={post} disabled={posting}>
+              <Button
+                variant="primary"
+                size="lg"
+                block
+                onClick={() => void post()}
+                disabled={posting || busy}
+              >
                 {posting ? 'Posting…' : 'Post photo'}
               </Button>
               <Button
