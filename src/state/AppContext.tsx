@@ -15,9 +15,11 @@ import {
   type ReactNode,
 } from 'react';
 
-import { dataStore } from '../lib/store';
+import { collectOrphanedImages, dataStore } from '../lib/store';
 import { emptyData, type AppData } from '../lib/types';
+import { dayKey } from '../lib/util';
 import { reducer, type Action } from './reducer';
+import { referencedImageIds } from './selectors';
 
 export interface Toast {
   id: number;
@@ -28,6 +30,12 @@ export interface Toast {
 interface AppValue {
   data: AppData;
   ready: boolean;
+  /**
+   * Today's local date key. Held in state rather than read from the clock at
+   * each call site so that it changes at midnight in a tab left open, and so
+   * memoised views can depend on it.
+   */
+  today: string;
   dispatch: (action: Action) => void;
   toast: (message: string, tone?: Toast['tone']) => void;
   toasts: Toast[];
@@ -39,6 +47,7 @@ const Ctx = createContext<AppValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [data, dispatch] = useReducer(reducer, null, emptyData);
   const [ready, setReady] = useState(false);
+  const [today, setToday] = useState(dayKey);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
   const hydrated = useRef(false);
@@ -50,9 +59,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (loaded) dispatch({ type: 'hydrate', data: loaded });
       hydrated.current = true;
       setReady(true);
+
+      // Sweep images the world no longer points at. Load is the only moment
+      // this is safe: nothing is mid-flow, so a picked-but-unposted draft
+      // can't be mistaken for an orphan. Best effort — never block the app.
+      void collectOrphanedImages(referencedImageIds(loaded ?? emptyData())).catch(() => {});
     });
     return () => {
       alive = false;
+    };
+  }, []);
+
+  /* ---- Midnight ---- */
+
+  useEffect(() => {
+    let timer: number;
+
+    const schedule = () => {
+      window.clearTimeout(timer);
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 1);
+      // Cap the wait: a machine that sleeps through midnight wakes with a
+      // timer that fired late or not at all, so re-check at least hourly.
+      const wait = Math.min(midnight.getTime() - now.getTime(), 3_600_000);
+      timer = window.setTimeout(() => {
+        setToday(dayKey());
+        schedule();
+      }, Math.max(1000, wait));
+    };
+
+    // Returning to a backgrounded tab is the common way to cross midnight.
+    const recheck = () => {
+      setToday(dayKey());
+      schedule();
+    };
+
+    schedule();
+    document.addEventListener('visibilitychange', recheck);
+    window.addEventListener('focus', recheck);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', recheck);
+      window.removeEventListener('focus', recheck);
     };
   }, []);
 
@@ -77,8 +126,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ data, ready, dispatch, toast, toasts, dismissToast }),
-    [data, ready, toast, toasts, dismissToast],
+    () => ({ data, ready, today, dispatch, toast, toasts, dismissToast }),
+    [data, ready, today, toast, toasts, dismissToast],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

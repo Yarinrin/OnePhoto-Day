@@ -37,9 +37,12 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
   const picker = useImagePicker(
     async (dataUrl) => {
       const id = uid('img');
-      await imageStore.put(id, dataUrl);
+      const durable = await imageStore.put(id, dataUrl);
       dispatch({ type: 'setAlbumCover', albumId, cover: { kind: 'stored', id } });
-      toast('Cover updated', 'ok');
+      toast(
+        durable ? 'Cover updated' : "Cover set, but this device won't keep it after a reload",
+        durable ? 'ok' : 'bad',
+      );
     },
     (message) => toast(message, 'bad'),
   );

@@ -14,7 +14,7 @@ import { Avatar, Button, EmptyState, TextArea } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
 import { imageStore } from '../lib/store';
 import type { ImageRef } from '../lib/types';
-import { dayKey, formatDayLong, formatTime, timeUntilTomorrow, uid } from '../lib/util';
+import { formatDayLong, formatTime, timeUntilTomorrow, uid } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { newPhoto } from '../state/reducer';
 import { useRouter } from '../state/router';
@@ -24,7 +24,7 @@ import { NotFound } from './NotFound';
 type Stage = 'pick' | 'preview' | 'done';
 
 export function Upload({ albumId }: { albumId: string }) {
-  const { data, dispatch, toast } = useApp();
+  const { data, dispatch, toast, today } = useApp();
   const { push, back, replace } = useRouter();
 
   const album = data.albums[albumId];
@@ -39,7 +39,13 @@ export function Upload({ albumId }: { albumId: string }) {
   const picker = useImagePicker(
     async (dataUrl) => {
       const id = uid('img');
-      await imageStore.put(id, dataUrl);
+      // A failed write must stop the flow here. Advancing to the preview
+      // would show the user a photo that was never saved, and posting it
+      // would leave a photo record pointing at nothing.
+      const durable = await imageStore.put(id, dataUrl);
+      if (!durable) {
+        toast("Saved for now, but this device won't keep it after a reload", 'bad');
+      }
       setPreview({ src: dataUrl, ref: { kind: 'stored', id } });
       setStage('preview');
     },
@@ -137,7 +143,7 @@ export function Upload({ albumId }: { albumId: string }) {
       {picker.inputs}
       <PageHeader
         title={<>Today&apos;s<br />photo</>}
-        subtitle={`${album.name} · ${formatDayLong(dayKey())}`}
+        subtitle={`${album.name} · ${formatDayLong(today)}`}
         onBack={() => (stage === 'preview' ? setStage('pick') : back({ name: 'album', id: album.id }))}
       />
 

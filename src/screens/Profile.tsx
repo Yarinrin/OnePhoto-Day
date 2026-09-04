@@ -33,9 +33,12 @@ export function Profile() {
   const picker = useImagePicker(
     async (dataUrl) => {
       const id = uid('img');
-      await imageStore.put(id, dataUrl);
+      const durable = await imageStore.put(id, dataUrl);
       dispatch({ type: 'setUserAvatar', imageId: id });
-      toast('Profile photo updated', 'ok');
+      toast(
+        durable ? 'Profile photo updated' : "Photo set, but this device won't keep it",
+        durable ? 'ok' : 'bad',
+      );
     },
     (message) => toast(message, 'bad'),
   );
@@ -152,6 +155,12 @@ export function Profile() {
             onChange={(v) => dispatch({ type: 'setSetting', key: 'albumActivity', value: v })}
           />
         </div>
+        {/* These are stored preferences, not working notifications — sending
+            them needs a server. Saying so beats a switch that quietly lies. */}
+        <p className="field__hint" style={{ marginTop: 10 }}>
+          Saved on this device. Reminders start arriving once albums sync between
+          phones — this build keeps everything local.
+        </p>
       </div>
 
       <div className="rows">

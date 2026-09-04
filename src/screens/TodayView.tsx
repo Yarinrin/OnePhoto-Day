@@ -11,20 +11,20 @@ import { PhotoImage } from '../components/PhotoImage';
 import { PageHeader, Screen } from '../components/Shell';
 import { Button, IconButton, Progress, Tag } from '../components/ui';
 import type { Photo } from '../lib/types';
-import { dayKey, formatDay, formatDayLong } from '../lib/util';
+import { formatDay, formatDayLong } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { albumDays, members, photosOnDay, todayState } from '../state/selectors';
 import { NotFound } from './NotFound';
 
 export function TodayView({ albumId, day }: { albumId: string; day?: string }) {
-  const { data } = useApp();
+  const { data, today } = useApp();
   const { push, back } = useRouter();
   const [open, setOpen] = useState<Photo | null>(null);
 
   const album = data.albums[albumId];
-  const viewing = day ?? dayKey();
-  const isToday = viewing === dayKey();
+  const viewing = day ?? today;
+  const isToday = viewing === today;
 
   const state = useMemo(
     () => (album ? todayState(data, album, viewing) : null),

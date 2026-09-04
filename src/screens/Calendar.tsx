@@ -9,7 +9,7 @@ import { IconBack, IconChevron } from '../components/Icons';
 import { PhotoImage } from '../components/PhotoImage';
 import { PageHeader, Screen } from '../components/Shell';
 import { EmptyState, IconButton } from '../components/ui';
-import { dateFromKey, dayKey, formatDay, monthName } from '../lib/util';
+import { dateFromKey, formatDay, monthName } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { albumDays, daysWithPhotos, photosOnDay } from '../state/selectors';
@@ -18,11 +18,10 @@ import { NotFound } from './NotFound';
 const DOW = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
 export function Calendar({ albumId }: { albumId: string }) {
-  const { data } = useApp();
+  const { data, today } = useApp();
   const { push, back } = useRouter();
   const album = data.albums[albumId];
 
-  const today = dayKey();
   const [cursor, setCursor] = useState(() => {
     const d = dateFromKey(today);
     return { year: d.getFullYear(), month: d.getMonth() };

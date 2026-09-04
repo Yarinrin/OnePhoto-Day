@@ -7,7 +7,7 @@ import { useImageSrc } from '../components/PhotoImage';
 import { Screen } from '../components/Shell';
 import { Avatar, Button, EmptyState, IconButton, Tag } from '../components/ui';
 import type { Album } from '../lib/types';
-import { dayKey, formatDay, relativeDayLabel } from '../lib/util';
+import { dateFromKey, formatDay, relativeDayLabel } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import {
@@ -21,14 +21,12 @@ import {
 } from '../state/selectors';
 
 export function Home() {
-  const { data } = useApp();
+  const { data, today } = useApp();
   const { push } = useRouter();
   const me = currentUser(data);
   const albums = useMemo(() => myAlbums(data), [data]);
-  const today = dayKey();
 
   const pending = albums.filter((a) => me && !hasPostedToday(data, a.id, me.id));
-  const now = new Date();
 
   return (
     <Screen nav>
@@ -38,7 +36,7 @@ export function Home() {
           <p className="home__sub">Your memories, one day at a time.</p>
         </div>
         <div className="home__datechip" aria-label={formatDay(today)}>
-          <b>{now.getDate()}</b>
+          <b>{dateFromKey(today).getDate()}</b>
           <span>{formatDay(today).slice(0, 3)}</span>
         </div>
       </header>

@@ -29,7 +29,8 @@ export function CreateAlbum() {
   const picker = useImagePicker(
     async (dataUrl) => {
       const id = uid('img');
-      await imageStore.put(id, dataUrl);
+      const durable = await imageStore.put(id, dataUrl);
+      if (!durable) toast("This device won't keep the cover after a reload", 'bad');
       setCover({ kind: 'stored', id });
       setCoverSrc(dataUrl);
     },

@@ -3,6 +3,26 @@
 import type { AppData, Album, Person, Photo } from '../lib/types';
 import { dayKey } from '../lib/util';
 
+/**
+ * Every stored-image id the world still points at: posted photos, album
+ * covers and profile pictures. Anything in the image store outside this set is
+ * dead weight. Deliberately exhaustive — a missed source here deletes a live
+ * photo, so it walks all three collections rather than assuming.
+ */
+export function referencedImageIds(data: AppData): Set<string> {
+  const ids = new Set<string>();
+  for (const photo of Object.values(data.photos)) {
+    if (photo.image.kind === 'stored') ids.add(photo.image.id);
+  }
+  for (const album of Object.values(data.albums)) {
+    if (album.cover?.kind === 'stored') ids.add(album.cover.id);
+  }
+  for (const person of Object.values(data.people)) {
+    if (person.avatarImageId) ids.add(person.avatarImageId);
+  }
+  return ids;
+}
+
 export function currentUser(data: AppData): Person | null {
   return data.currentUserId ? (data.people[data.currentUserId] ?? null) : null;
 }

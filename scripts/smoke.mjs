@@ -288,6 +288,156 @@ for (const [label, opts] of [
   await ctx.close();
 }
 
+/* ------------------------------------------------------------------ */
+/* 4. Storage hygiene                                                  */
+/* ------------------------------------------------------------------ */
+
+{
+  const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
+  const page = await ctx.newPage();
+  await onboard(page);
+
+  // Post a photo, then delete the album, then reload: the image file behind
+  // that photo must not still be sitting in IndexedDB.
+  await page.getByRole('button', { name: /Open The Boys/ }).first().click();
+  await page.waitForTimeout(500);
+  await page.locator('.nav__shutter').click();
+  await page.waitForTimeout(500);
+  await page.locator('input[type=file]').first().setInputFiles(PNG_PATH);
+  await page.waitForTimeout(800);
+  await page.getByRole('button', { name: /^Post photo$/ }).click();
+  await page.waitForTimeout(800);
+
+  const countImages = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const req = indexedDB.open('opd-images', 1);
+          req.onsuccess = () => {
+            const tx = req.result.transaction('images', 'readonly');
+            const all = tx.objectStore('images').getAllKeys();
+            all.onsuccess = () => resolve(all.result.length);
+          };
+          req.onerror = () => resolve(-1);
+        }),
+    );
+
+  const stored = await countImages();
+  check('an uploaded image reaches IndexedDB', stored === 1, `${stored} stored`);
+
+  const albumId = await page.evaluate(() => {
+    const d = JSON.parse(localStorage.getItem('opd.data.v1'));
+    return Object.values(d.albums).find((a) => a.name === 'The Boys').id;
+  });
+  await page.goto(`${BASE}/album/${albumId}/settings`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
+  await page.getByRole('button', { name: /Delete album/ }).click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: /Delete for everyone/ }).click();
+  await page.waitForTimeout(800);
+
+  // Collection runs at load, so the sweep lands on the next start.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  const after = await countImages();
+  check('deleting an album frees its image files', after === 0, `${after} left`);
+
+  // And a live photo is never swept.
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: /Open Family/ }).first().click();
+  await page.waitForTimeout(500);
+  await page.locator('.nav__shutter').click();
+  await page.waitForTimeout(500);
+  await page.locator('input[type=file]').first().setInputFiles(PNG_PATH);
+  await page.waitForTimeout(800);
+  await page.getByRole('button', { name: /^Post photo$/ }).click();
+  await page.waitForTimeout(800);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  check('a live photo survives collection', (await countImages()) === 1);
+
+  await ctx.close();
+}
+
+/* ------------------------------------------------------------------ */
+/* 4b. A storage failure is reported, never swallowed                  */
+/* ------------------------------------------------------------------ */
+
+{
+  const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
+  const page = await ctx.newPage();
+  const unhandled = [];
+  page.on('pageerror', (e) => unhandled.push(e.message));
+
+  // Break the image store before the app ever opens it.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'indexedDB', {
+      configurable: true,
+      get() {
+        throw new DOMException('blocked', 'SecurityError');
+      },
+    });
+  });
+
+  await onboard(page);
+  await page.getByRole('button', { name: /Open The Boys/ }).first().click();
+  await page.waitForTimeout(500);
+  await page.locator('.nav__shutter').click();
+  await page.waitForTimeout(500);
+  await page.locator('input[type=file]').first().setInputFiles(PNG_PATH);
+  await page.waitForTimeout(1000);
+
+  const warned = await page.locator('.toast--bad').count();
+  check('an unusable image store warns the user', warned > 0);
+  check('…and does not throw an unhandled error', unhandled.length === 0, unhandled[0] ?? '');
+  await ctx.close();
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Midnight rollover                                                */
+/* ------------------------------------------------------------------ */
+
+{
+  // Start the clock just before midnight, then let it cross while the tab
+  // sits open. "Today" must move on rather than freezing on yesterday.
+  const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
+  const page = await ctx.newPage();
+  await onboard(page);
+
+  const dayShownBefore = await page.evaluate(() => {
+    const el = document.querySelector('.home__datechip b');
+    return el ? el.textContent : null;
+  });
+
+  await page.evaluate(() => {
+    // Move the wall clock forward a day and tell the app to look again.
+    const real = Date;
+    const shift = 24 * 60 * 60 * 1000;
+    // eslint-disable-next-line no-global-assign
+    window.Date = class extends real {
+      constructor(...args) {
+        super(...(args.length ? args : [real.now() + shift]));
+      }
+      static now() {
+        return real.now() + shift;
+      }
+    };
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.waitForTimeout(600);
+
+  const dayShownAfter = await page.evaluate(() => {
+    const el = document.querySelector('.home__datechip b');
+    return el ? el.textContent : null;
+  });
+  check(
+    'the day rolls over in an open tab',
+    dayShownBefore !== null && dayShownAfter !== null && dayShownBefore !== dayShownAfter,
+    `${dayShownBefore} → ${dayShownAfter}`,
+  );
+  await ctx.close();
+}
+
 await browser.close();
 
 const passed = results.filter((r) => r.pass).length;

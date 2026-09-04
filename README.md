@@ -32,8 +32,9 @@ npm run smoke        # end-to-end checks (needs `npm run dev` running)
 
 The smoke test drives a real browser through onboarding, album creation,
 joining by code, uploading, the one-per-day limit, persistence across reload,
-every screen, desktop and 320px layouts, and reduced-motion. Add
-`--shots=<dir>` to capture a screenshot of each screen it visits.
+every screen, desktop and 320px layouts, reduced-motion, image cleanup, a
+broken image store, and the midnight rollover. Add `--shots=<dir>` to capture
+a screenshot of each screen it visits.
 
 ## Design
 
@@ -71,10 +72,28 @@ The smoke test asserts this against the reducer directly.
 
 **Persistence** is split behind two small interfaces in `lib/store.ts`:
 `dataStore` (the JSON world, in `localStorage`) and `imageStore` (uploads, in
-IndexedDB with an in-memory fallback). Both are async and side-effect free from
-the app's point of view, so swapping either for `fetch` calls against a real
-backend touches nothing else. Uploaded photos are downscaled to 1400px JPEG on
-the way in, so a few hundred of them fit comfortably.
+IndexedDB). Both are async and side-effect free from the app's point of view,
+so swapping either for `fetch` calls against a real backend touches nothing
+else. Uploaded photos are downscaled to 1400px JPEG on the way in, so a few
+hundred of them fit comfortably.
+
+A failed image write is never swallowed: `imageStore.put` throws
+`ImageWriteError` when the device is out of room and resolves to `false` when
+the image is only held for the session, and every call site surfaces that. In a
+memory-keeping app, a photo that looks saved and isn't is the worst possible
+failure.
+
+**Unreferenced images are collected on load.** Deleting an album, leaving one,
+replacing a cover or avatar, or abandoning a pick mid-upload all leave image
+files behind. `collectOrphanedImages` diffs the store against
+`referencedImageIds(data)` and deletes the difference. It runs only at startup,
+which is the one moment nothing is mid-flow — a picked-but-unposted image is
+written before its record exists and would otherwise look like an orphan.
+
+**The day rolls over.** `today` lives in the app context, updated by a timer to
+the next local midnight and re-checked whenever the tab regains focus, so a
+session left open overnight moves on instead of freezing on yesterday. Views
+that memoise today's state depend on it.
 
 **Routing** is a ~100-line router over the History API. It exists rather than a
 dependency because page transitions need the *direction* of each navigation,
@@ -102,6 +121,22 @@ opens with real history instead of an empty shell. Four albums you're in, with
 up to 168 days of backlog, plus two you aren't — `BAND-77` and `FLAT-24` — so
 the invite-code flow has something real to find. It's ordinary app data and can
 be edited or deleted like anything else; **Profile → Start over** clears it.
+
+## Known limits
+
+This is a single-device prototype. There is no server, so albums are **not
+actually shared** — each browser holds its own separate world, and the demo
+join codes (`BAND-77`, `FLAT-24`) work because those albums are seeded into
+your own storage. Two real people cannot share an album, and there is no
+account to sign in with on a second device.
+
+The notification toggles store a real preference but send nothing; delivery
+needs a server. The Profile screen says so rather than implying otherwise.
+
+Making it real means adding identity, a shared database, object storage for the
+photo files, and server-side enforcement of the daily rule — in Postgres terms,
+`UNIQUE (album_id, author_id, day)`, which is the same rule the reducer keeps
+locally, in the one place a client can't bypass.
 
 ## Accessibility
 

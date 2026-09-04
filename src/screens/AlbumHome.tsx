@@ -33,7 +33,7 @@ import {
 import { NotFound } from './NotFound';
 
 export function AlbumHome({ albumId }: { albumId: string }) {
-  const { data, dispatch, toast } = useApp();
+  const { data, dispatch, toast, today } = useApp();
   const { push, back } = useRouter();
   const album = data.albums[albumId];
 
@@ -44,7 +44,12 @@ export function AlbumHome({ albumId }: { albumId: string }) {
     }
   }, [album, data.activeAlbumId, dispatch]);
 
-  const state = useMemo(() => (album ? todayState(data, album) : null), [data, album]);
+  // `today` is in the deps so a tab left open past midnight moves on rather
+  // than showing yesterday's page as today's.
+  const state = useMemo(
+    () => (album ? todayState(data, album, today) : null),
+    [data, album, today],
+  );
   const history = useMemo(
     () => (album ? albumDays(data, album.id).filter((d) => d !== state?.day).slice(0, 3) : []),
     [data, album, state?.day],
