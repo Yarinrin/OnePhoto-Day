@@ -204,7 +204,28 @@ The reducer still owns the in-memory world in both modes. In demo mode it also
 *is* the source of truth; in live mode it's a local mirror that each command
 refreshes from the server after writing.
 
+### Verifying live mode
+
+`scripts/live-check.mjs` drives the whole live path in a real browser: sign in,
+create an album, upload a photo to the bucket, read it back through a signed
+URL, hit the daily limit, reload. It signs in with email/password purely to
+obtain a session — the app itself uses Google, and every path after the token
+is identical, so this exercises the same code.
+
+**It has never been run against a live project.** The cloud container this was
+built in blocks `*.supabase.co` at the network policy, so neither Node nor the
+browser inside it can reach Supabase; only the database tooling could, by a
+different route. Run it from a machine with normal network access, and treat
+live mode as unproven until it goes green.
+
 ## Known limits
+
+**Live mode is untested end to end.** The database half is thoroughly verified —
+schema, security rules, the daily-limit constraint, and the privacy model, all
+checked against the real project with multiple users acting under their own
+identities. The client half — the sign-in round trip, uploading to the bucket,
+signed URLs — compiles and reads correctly but has never actually run against
+the live project, for the network reason above.
 
 Photos load in one page of up to 2000 rows — fine for a friend group, not for
 years of a large album. Real pagination is the obvious next step.
