@@ -170,6 +170,19 @@ Supabase-shaped stubs: schema applies clean, both views return correct streaks
 across gaps, the constraint rejects a second photo, and the join function
 accepts a code regardless of dashes or case.
 
+**This schema is live** — applied to the real Supabase project via the MCP
+connection, not just checked locally. Supabase's own security advisor flagged
+that `is_member`, `shares_album_with` and `join_album_by_code` were directly
+callable over the public API by anyone, signed in or not (it auto-exposes
+every `public`-schema function this way). None of them leaked real data to an
+anonymous caller — each keys off `auth.uid()`, which is null when nobody's
+signed in — but they're now restricted anyway: locked out for anonymous
+callers entirely, and `handle_new_user` (which only the sign-up trigger should
+ever invoke) is unreachable directly by anyone. Every grant change was proven
+with a rollback-wrapped insert into `auth.users` — simulating a real Google
+sign-in — confirming the trigger still creates a profile row under the
+tightened permissions before any of it was applied for real.
+
 ## Known limits
 
 This is a single-device prototype. There is no server, so albums are **not

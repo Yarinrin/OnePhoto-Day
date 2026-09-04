@@ -338,6 +338,42 @@ create trigger on_auth_user_created
 
 
 -- ============================================================================
+-- 6b. LOCKING DOWN THE HELPERS
+--
+-- Supabase auto-exposes every function in `public` as a REST endpoint
+-- (`/rest/v1/rpc/<name>`) and grants anon + authenticated EXECUTE on it by
+-- default — a separate, explicit grant, not just the generic Postgres
+-- "PUBLIC" fallback, so revoking from PUBLIC alone does not remove it.
+--
+-- None of these leak real data to an anonymous caller today (each keys off
+-- auth.uid(), which is null for anon), but there's no reason to leave them
+-- directly callable by anyone who isn't supposed to use them:
+--
+--   handle_new_user      trigger-only — no direct caller, ever
+--   is_member             used inside RLS policies by signed-in queries
+--   shares_album_with     same
+--   join_album_by_code    the one meant to be called directly — but only
+--                          once someone is signed in
+--
+-- Verified with a rollback-wrapped insert into auth.users that revoking these
+-- does not stop the sign-up trigger from firing.
+-- ============================================================================
+
+-- Revoke from `public` too (plain Postgres grants EXECUTE to it on every new
+-- function by default) — not only anon/authenticated. Supabase projects
+-- already strip that grant, so this is redundant there, but it keeps the
+-- file correct if it's ever run somewhere that doesn't.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.is_member(uuid) from public, anon, authenticated;
+revoke execute on function public.shares_album_with(uuid) from public, anon, authenticated;
+revoke execute on function public.join_album_by_code(text) from public, anon, authenticated;
+
+grant execute on function public.is_member(uuid) to authenticated;
+grant execute on function public.shares_album_with(uuid) to authenticated;
+grant execute on function public.join_album_by_code(text) to authenticated;
+
+
+-- ============================================================================
 -- 7. PHOTO STORAGE
 --
 -- The picture files live in a storage bucket, not in the database. Only
