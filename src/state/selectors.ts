@@ -1,7 +1,7 @@
 /** Derived reads over AppData. Pure, memo-friendly, no React. */
 
 import type { AppData, Album, Person, Photo } from '../lib/types';
-import { dayKey } from '../lib/util';
+import { dayKey, shiftDay } from '../lib/util';
 
 /**
  * Every stored-image id the world still points at: posted photos, album
@@ -121,16 +121,92 @@ export function albumPhotoCount(data: AppData, albumId: string): number {
   return n;
 }
 
-/** Consecutive days, ending today or yesterday, where the album has a photo. */
-export function albumStreak(data: AppData, albumId: string): number {
-  const days = daysWithPhotos(data, albumId);
-  if (!days.size) return 0;
-  const cursor = new Date();
-  if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
-  let streak = 0;
-  while (days.has(dayKey(cursor))) {
-    streak++;
-    cursor.setDate(cursor.getDate() - 1);
+/* ------------------------------------------------------------------ */
+/* Streaks                                                             */
+/* ------------------------------------------------------------------ */
+
+export interface Streak {
+  /** Days in a row, counting up to today. */
+  current: number;
+  /** The longest run ever, whether or not it's still going. */
+  best: number;
+}
+
+const NO_STREAK: Streak = { current: 0, best: 0 };
+
+/**
+ * The run of consecutive days ending now.
+ *
+ * A streak that hasn't been extended *yet today* is still alive — you have
+ * until midnight. So the walk starts at yesterday when today is empty, and
+ * only a fully missed day breaks the run.
+ */
+function currentRun(days: Set<string>, today: string): number {
+  let cursor = days.has(today) ? today : shiftDay(today, -1);
+  let n = 0;
+  while (days.has(cursor)) {
+    n++;
+    cursor = shiftDay(cursor, -1);
   }
-  return streak;
+  return n;
+}
+
+/** The longest run of consecutive days anywhere in the set. */
+function longestRun(days: Set<string>): number {
+  if (!days.size) return 0;
+  // `YYYY-MM-DD` sorts lexically in date order, so a plain sort is enough.
+  const sorted = [...days].sort();
+  let best = 1;
+  let run = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    run = sorted[i] === shiftDay(sorted[i - 1], 1) ? run + 1 : 1;
+    if (run > best) best = run;
+  }
+  return best;
+}
+
+function streakOf(days: Set<string>, today: string): Streak {
+  if (!days.size) return NO_STREAK;
+  return { current: currentRun(days, today), best: longestRun(days) };
+}
+
+/** Days this person put a photo into this album. */
+function personDaysInAlbum(data: AppData, albumId: string, personId: string): Set<string> {
+  const days = new Set<string>();
+  for (const p of Object.values(data.photos)) {
+    if (p.albumId === albumId && p.authorId === personId) days.add(p.day);
+  }
+  return days;
+}
+
+/** Days this person posted anywhere at all. */
+function personDays(data: AppData, personId: string): Set<string> {
+  const days = new Set<string>();
+  for (const p of Object.values(data.photos)) {
+    if (p.authorId === personId) days.add(p.day);
+  }
+  return days;
+}
+
+/** One person's run inside one album. */
+export function personAlbumStreak(
+  data: AppData,
+  albumId: string,
+  personId: string,
+  today = dayKey(),
+): Streak {
+  return streakOf(personDaysInAlbum(data, albumId, personId), today);
+}
+
+/**
+ * One person's run across every album. Posting to any album keeps the day
+ * alive — the habit is showing up, not which album you showed up in.
+ */
+export function personStreak(data: AppData, personId: string, today = dayKey()): Streak {
+  return streakOf(personDays(data, personId), today);
+}
+
+/** Consecutive days the album as a whole has a photo from anyone. */
+export function albumStreak(data: AppData, albumId: string, today = dayKey()): number {
+  return currentRun(daysWithPhotos(data, albumId), today);
 }

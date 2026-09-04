@@ -122,6 +122,54 @@ up to 168 days of backlog, plus two you aren't — `BAND-77` and `FLAT-24` — s
 the invite-code flow has something real to find. It's ordinary app data and can
 be edited or deleted like anything else; **Profile → Start over** clears it.
 
+## Streaks
+
+A streak is days in a row that you posted. Two numbers are tracked, per album
+and overall: the **current** run and your **best** ever. Posting to any album
+keeps the overall day alive — the habit is showing up, not which album you
+showed up in.
+
+A run that hasn't been extended *yet today* is still alive; you have until
+midnight. Only a fully missed day breaks it. The maths lives in
+`state/selectors.ts` (`personAlbumStreak`, `personStreak`) and is covered by
+seven cases in the smoke suite, including the grace day, a gap breaking a run,
+and "best" being the longest run rather than the most recent.
+
+Profile shows your overall streak plus a table of every album you're in — how
+many people are in it, your current streak and your best.
+
+## Database
+
+`supabase/schema.sql` is the backend schema: four tables (`profiles`,
+`albums`, `album_members`, `photos`) plus row-level security, an
+invite-code join function, a trigger that creates a profile on first sign-in,
+and a private storage bucket for the photo files.
+
+Two views answer "who's using this and how are they doing", browsable directly
+in Supabase's Table Editor:
+
+- **`user_stats`** — every signed-in user, how many albums they're in, their
+  current streak, best streak, photo count and last post.
+- **`album_stats`** — every album, how many people are in it, *which* people,
+  the owner, photo count and days kept.
+
+Streaks aren't stored, they're derived from the photos, so they can't drift out
+of sync. The SQL uses the "gaps and islands" trick: number each person's
+posting days in order and subtract that number from the date — every day in an
+unbroken run lands on the same value, so grouping by it yields each run and its
+length.
+
+The daily rule becomes a constraint the database enforces itself:
+
+```sql
+constraint one_photo_per_day unique (album_id, author_id, day)
+```
+
+The whole file was verified end-to-end against a real Postgres 16 with
+Supabase-shaped stubs: schema applies clean, both views return correct streaks
+across gaps, the constraint rejects a second photo, and the join function
+accepts a code regardless of dashes or case.
+
 ## Known limits
 
 This is a single-device prototype. There is no server, so albums are **not

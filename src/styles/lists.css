@@ -267,3 +267,101 @@
   transform: translate(2px, 3px);
   box-shadow: 0 0 0 var(--ink);
 }
+
+/* ============================================================
+   Data table — albums, people, streaks
+   ============================================================ */
+
+.tablewrap {
+  /* A narrow phone must scroll the table sideways, never the page. */
+  margin: 0 var(--s5) var(--s6);
+  border: var(--border);
+  border-radius: var(--r);
+  background: var(--paper);
+  box-shadow: var(--pop-sm);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tablewrap::-webkit-scrollbar {
+  display: none;
+}
+
+.dtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.dtable th,
+.dtable td {
+  padding: 11px var(--s3);
+  text-align: left;
+  border-bottom: var(--border-hair);
+  white-space: nowrap;
+}
+.dtable tbody tr:last-child th,
+.dtable tbody tr:last-child td {
+  border-bottom: 0;
+}
+.dtable thead th {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: var(--paper-sunk);
+}
+.dtable__num {
+  text-align: right;
+  font-family: var(--font-display);
+  font-size: 14px;
+  width: 1%;
+}
+.dtable thead .dtable__num {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+/* A live streak reads as a filled chip, matching the stat tiles. */
+.dtable__num--live {
+  color: var(--ink);
+}
+.dtable__num--live::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: 2px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 1.5px solid var(--ink);
+}
+
+.dtable__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+@media (hover: hover) {
+  .dtable__link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+.dtable__dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: var(--accent);
+}

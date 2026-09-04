@@ -196,7 +196,8 @@ const myPhotosToday = (page, albumName) =>
   await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(700);
   await shot(page, '15-profile');
-  check('profile lists albums', (await page.locator('.chip').count()) > 4);
+  check('profile tables every album with its streaks', (await page.locator('.dtable tbody tr').count()) >= 4);
+  check('profile shows an overall streak', (await page.locator('.stats .stat').count()) === 3);
 
   await page.goto(`${BASE}/album/does-not-exist`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);
@@ -435,6 +436,84 @@ for (const [label, opts] of [
     dayShownBefore !== null && dayShownAfter !== null && dayShownBefore !== dayShownAfter,
     `${dayShownBefore} → ${dayShownAfter}`,
   );
+  await ctx.close();
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. Streak arithmetic                                                */
+/* ------------------------------------------------------------------ */
+
+{
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+
+  const r = await page.evaluate(async () => {
+    const { personAlbumStreak } = await import('/src/state/selectors.ts');
+    const { emptyData } = await import('/src/lib/types.ts');
+    const { shiftDay, dayKey } = await import('/src/lib/util.ts');
+
+    const today = dayKey();
+
+    /** Build a world where "me" posted on exactly these day-offsets. */
+    const world = (offsets) => {
+      const s = emptyData();
+      s.currentUserId = 'me';
+      s.people = { me: { id: 'me', name: 'Y', accent: 'pink' } };
+      s.albums = {
+        a1: {
+          id: 'a1', name: 'A', accent: 'blue', inviteCode: 'AAAA-11',
+          ownerId: 'me', createdAt: new Date().toISOString(), memberIds: ['me'],
+        },
+      };
+      offsets.forEach((off, i) => {
+        const day = shiftDay(today, -off);
+        s.photos[`p${i}`] = {
+          id: `p${i}`, albumId: 'a1', authorId: 'me', day,
+          postedAt: new Date().toISOString(),
+          image: { kind: 'generated', scene: 'sunset', seed: 1 },
+        };
+      });
+      return s;
+    };
+
+    const at = (offsets) => personAlbumStreak(world(offsets), 'a1', 'me', today);
+
+    return {
+      empty: at([]),
+      todayOnly: at([0]),
+      twoInARow: at([0, 1]),
+      // Nothing today yet, but yesterday and the day before: still alive.
+      graceDay: at([1, 2]),
+      // A gap at yesterday breaks it; today restarts at 1.
+      brokenByGap: at([0, 3, 4]),
+      // An old run that ended long ago: no current streak, best remembered.
+      historic: at([10, 11, 12, 13, 14]),
+      // Best should be the longest run, not the most recent.
+      bestIsLongest: at([0, 1, 5, 6, 7, 8]),
+    };
+  });
+
+  check('streak: no photos is 0/0', r.empty.current === 0 && r.empty.best === 0);
+  check('streak: one photo today is 1/1', r.todayOnly.current === 1 && r.todayOnly.best === 1);
+  check('streak: two days running is 2', r.twoInARow.current === 2);
+  check(
+    'streak: yesterday still counts before midnight',
+    r.graceDay.current === 2,
+    `got ${r.graceDay.current}`,
+  );
+  check('streak: a missed day breaks it', r.brokenByGap.current === 1, `got ${r.brokenByGap.current}`);
+  check(
+    'streak: an old run leaves no current streak',
+    r.historic.current === 0 && r.historic.best === 5,
+    `${r.historic.current}/${r.historic.best}`,
+  );
+  check(
+    'streak: best is the longest run, not the latest',
+    r.bestIsLongest.current === 2 && r.bestIsLongest.best === 4,
+    `${r.bestIsLongest.current}/${r.bestIsLongest.best}`,
+  );
+
   await ctx.close();
 }
 

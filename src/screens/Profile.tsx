@@ -12,17 +12,17 @@ import {
 } from '../components/Icons';
 import { useImageSrc } from '../components/PhotoImage';
 import { PageHeader, Screen } from '../components/Shell';
-import { Avatar, Button, Modal, TextField } from '../components/ui';
+import { Avatar, Button, IconButton, Modal, TextField } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
 import { dataStore, imageStore } from '../lib/store';
 import { uid } from '../lib/util';
 import { emptyData } from '../lib/types';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
-import { albumPhotoCount, currentUser, myAlbums } from '../state/selectors';
+import { currentUser, myAlbums, personAlbumStreak, personStreak } from '../state/selectors';
 
 export function Profile() {
-  const { data, dispatch, toast } = useApp();
+  const { data, dispatch, toast, today } = useApp();
   const { push, replace } = useRouter();
   const me = currentUser(data);
   const albums = useMemo(() => myAlbums(data), [data]);
@@ -46,6 +46,7 @@ export function Profile() {
   if (!me) return null;
 
   const myPhotos = Object.values(data.photos).filter((p) => p.authorId === me.id).length;
+  const overall = personStreak(data, me.id, today);
 
   return (
     <Screen nav>
@@ -68,30 +69,77 @@ export function Profile() {
         </div>
       </div>
 
+      {/* Your run across every album — posting anywhere keeps the day alive. */}
+      <div className="stats">
+        <div className={`stat ${overall.current > 0 ? 'stat--live' : ''}`}>
+          <b>{overall.current}</b>
+          <span>Day streak</span>
+        </div>
+        <div className="stat">
+          <b>{overall.best}</b>
+          <span>Best ever</span>
+        </div>
+        <div className="stat">
+          <b>{myPhotos.toLocaleString()}</b>
+          <span>Photos</span>
+        </div>
+      </div>
+
       <div className="section">
         <h2 className="section__title">My albums</h2>
         <span className="section__count">{albums.length}</span>
+        <span className="grow" />
+        <IconButton label="Create an album" accent onClick={() => push({ name: 'create' })}>
+          <IconPlus size={20} strokeWidth={2.8} />
+        </IconButton>
       </div>
 
-      <div className="chiplist">
-        {albums.map((a) => (
-          <button
-            key={a.id}
-            className="chip"
-            data-accent={a.accent}
-            onClick={() => push({ name: 'album', id: a.id })}
-          >
-            {a.name}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, opacity: 0.7 }}>
-              {albumPhotoCount(data, a.id)}
-            </span>
-          </button>
-        ))}
-        <button className="chip" style={{ background: 'var(--paper)' }} onClick={() => push({ name: 'create' })}>
-          <IconPlus size={15} strokeWidth={3} />
-          New album
-        </button>
-      </div>
+      {albums.length > 0 && (
+        <div className="tablewrap">
+          <table className="dtable">
+            <caption className="sr-only">
+              Your albums, how many people are in each, and your posting streaks
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Album</th>
+                <th scope="col" className="dtable__num">
+                  People
+                </th>
+                <th scope="col" className="dtable__num">
+                  Streak
+                </th>
+                <th scope="col" className="dtable__num">
+                  Best
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {albums.map((a) => {
+                const streak = personAlbumStreak(data, a.id, me.id, today);
+                return (
+                  <tr key={a.id}>
+                    <th scope="row">
+                      <button
+                        className="dtable__link"
+                        onClick={() => push({ name: 'album', id: a.id })}
+                      >
+                        <span className="dtable__dot" data-accent={a.accent} aria-hidden="true" />
+                        {a.name}
+                      </button>
+                    </th>
+                    <td className="dtable__num">{a.memberIds.length}</td>
+                    <td className={`dtable__num ${streak.current > 0 ? 'dtable__num--live' : ''}`}>
+                      {streak.current}
+                    </td>
+                    <td className="dtable__num">{streak.best}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="rows">
         <p className="field__label">Your details</p>

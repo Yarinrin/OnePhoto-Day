@@ -24,9 +24,9 @@ import { useRouter } from '../state/router';
 import {
   albumDays,
   albumPhotoCount,
-  albumStreak,
   currentUser,
   members,
+  personAlbumStreak,
   photosOnDay,
   todayState,
 } from '../state/selectors';
@@ -63,6 +63,9 @@ export function AlbumHome({ albumId }: { albumId: string }) {
   const myCount = me
     ? Object.values(data.photos).filter((p) => p.albumId === album.id && p.authorId === me.id).length
     : 0;
+  const myStreak = me
+    ? personAlbumStreak(data, album.id, me.id, today)
+    : { current: 0, best: 0 };
 
   return (
     <Screen nav accent={album.accent}>
@@ -173,17 +176,18 @@ export function AlbumHome({ albumId }: { albumId: string }) {
       {/* A row of zeroes tells a new album's owner nothing. */}
       {photoCount > 0 && (
         <div className="stats">
-          <div className="stat">
-            <b>{albumStreak(data, album.id)}</b>
-            <span>Day streak</span>
+          {/* A live streak lights up; a broken one stays quiet paper. */}
+          <div className={`stat ${myStreak.current > 0 ? 'stat--live' : ''}`}>
+            <b>{myStreak.current}</b>
+            <span>Your streak</span>
           </div>
           <div className="stat">
-            <b>{albumDays(data, album.id).length}</b>
-            <span>Days kept</span>
+            <b>{myStreak.best}</b>
+            <span>Your best</span>
           </div>
           <div className="stat">
             <b>{myCount}</b>
-            <span>Yours</span>
+            <span>Your photos</span>
           </div>
         </div>
       )}

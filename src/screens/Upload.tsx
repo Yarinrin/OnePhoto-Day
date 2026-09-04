@@ -8,7 +8,7 @@
 import { useState } from 'react';
 
 import { Confetti } from '../components/Confetti';
-import { IconCamera, IconCheck, IconClock, IconImage, IconRefresh } from '../components/Icons';
+import { IconCamera, IconCheck, IconClock, IconImage, IconRefresh, Sparkle } from '../components/Icons';
 import { PageHeader, Screen } from '../components/Shell';
 import { Avatar, Button, EmptyState, TextArea } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
@@ -18,7 +18,7 @@ import { formatDayLong, formatTime, timeUntilTomorrow, uid } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { newPhoto } from '../state/reducer';
 import { useRouter } from '../state/router';
-import { currentUser, hasPostedToday, todayState } from '../state/selectors';
+import { currentUser, hasPostedToday, personAlbumStreak, todayState } from '../state/selectors';
 import { NotFound } from './NotFound';
 
 type Stage = 'pick' | 'preview' | 'done';
@@ -96,6 +96,7 @@ export function Upload({ albumId }: { albumId: string }) {
 
   /* ---- Posted just now ---- */
   if (stage === 'done') {
+    const postedStreak = personAlbumStreak(data, album.id, me.id, today);
     return (
       <Screen accent={album.accent}>
         <Confetti count={10} />
@@ -107,6 +108,14 @@ export function Upload({ albumId }: { albumId: string }) {
           <p className="celebrate__sub">
             That&apos;s today&apos;s frame in <strong>{album.name}</strong>. See you tomorrow.
           </p>
+          {/* The reward for showing up, stated once and quietly. */}
+          {postedStreak.current > 1 && (
+            <p className="streakline">
+              <Sparkle size={13} />
+              {postedStreak.current} days in a row
+              {postedStreak.current >= postedStreak.best ? ' — your best yet' : ''}
+            </p>
+          )}
           <div className="stack" style={{ gap: 10, width: '100%', marginTop: 16 }}>
             <Button variant="ink" size="lg" block onClick={() => replace({ name: 'today', id: album.id })}>
               See today&apos;s page
