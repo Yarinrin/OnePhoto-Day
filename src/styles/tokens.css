@@ -1,0 +1,122 @@
+/* ============================================================
+   ONE PHOTO / DAY — design tokens
+   Retro editorial: cream paper, black ink, hard offset shadows.
+   ============================================================ */
+
+:root {
+  /* ---- Surface ---- */
+  --cream: #f7f1e5;
+  --paper: #fffdf7;
+  --paper-sunk: #efe7d7;
+  --ink: #111111;
+  --ink-soft: #3d382f;
+  --ink-faint: #857c6c;
+
+  /* ---- Accents ---- */
+  --yellow: #ffd84d;
+  --pink: #f28ba8;
+  --blue: #9dd4e5;
+  --green: #a9d88b;
+  --lavender: #b7a7e8;
+  --clay: #f0a875;
+
+  /* Accent currently in scope (albums re-bind this locally) */
+  --accent: var(--yellow);
+  --accent-deep: #e8bd25;
+
+  /* ---- Semantic ---- */
+  --danger: #e2614f;
+  --success: #4f9c52;
+
+  /* ---- Ink lines ---- */
+  --line: 2.5px;
+  --line-thick: 3px;
+  --line-hair: 2px;
+  --border: var(--line) solid var(--ink);
+  --border-thick: var(--line-thick) solid var(--ink);
+  --border-hair: var(--line-hair) solid var(--ink);
+
+  /* ---- Hard offset shadows (the tactile signature) ---- */
+  --pop-sm: 2px 3px 0 var(--ink);
+  --pop: 4px 5px 0 var(--ink);
+  --pop-lg: 6px 8px 0 var(--ink);
+  --pop-xl: 8px 11px 0 var(--ink);
+
+  /* ---- Corners: chunky, not squishy ---- */
+  --r-xs: 7px;
+  --r-sm: 10px;
+  --r: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* ---- Type ---- */
+  --font-display: 'Archivo Black', 'Arial Black', system-ui, sans-serif;
+  --font-body: 'Space Grotesk Variable', 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* ---- Spacing scale ---- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 56px;
+
+  /* ---- Motion: Playful personality ----
+     One signature curve for ~80% of motion (--ease-pop),
+     directional curves for entrance/exit, three durations. */
+  --t-quick: 140ms;
+  --t-base: 260ms;
+  --t-slow: 420ms;
+  --t-page: 380ms;
+
+  --ease-pop: cubic-bezier(0.175, 0.885, 0.32, 1.275); /* overshoot settle */
+  --ease-out: cubic-bezier(0.05, 0.7, 0.1, 1); /* entrances */
+  --ease-in: cubic-bezier(0.3, 0, 1, 1); /* exits */
+  --ease-mid: cubic-bezier(0.2, 0, 0, 1); /* on-screen, decisive */
+  --ease-sine: cubic-bezier(0.45, 0, 0.55, 1); /* ambient loops */
+
+  /* ---- Layout ---- */
+  --app-w: 460px;
+  --nav-h: 74px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+/* Album accent themes — set via data-accent on any subtree */
+[data-accent='yellow'] {
+  --accent: var(--yellow);
+  --accent-deep: #e8bd25;
+}
+[data-accent='pink'] {
+  --accent: var(--pink);
+  --accent-deep: #dd6d8d;
+}
+[data-accent='blue'] {
+  --accent: var(--blue);
+  --accent-deep: #79bdd2;
+}
+[data-accent='green'] {
+  --accent: var(--green);
+  --accent-deep: #8cc46b;
+}
+[data-accent='lavender'] {
+  --accent: var(--lavender);
+  --accent-deep: #9c88de;
+}
+[data-accent='clay'] {
+  --accent: var(--clay);
+  --accent-deep: #e28d51;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-quick: 1ms;
+    --t-base: 1ms;
+    --t-slow: 1ms;
+    --t-page: 1ms;
+  }
+}

@@ -1,0 +1,244 @@
+/* ============================================================
+   Shell: bottom navigation + page transitions
+   ============================================================ */
+
+.nav {
+  position: absolute;
+  left: var(--s4);
+  right: var(--s4);
+  bottom: calc(var(--s4) + var(--safe-b));
+  z-index: 50;
+  height: var(--nav-h);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  border: var(--border-thick);
+  border-radius: var(--r-xl);
+  background: var(--paper);
+  box-shadow: var(--pop);
+  animation: nav-in var(--t-slow) var(--ease-pop) both;
+}
+@keyframes nav-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+}
+
+.nav__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav__item svg {
+  transition: transform var(--t-base) var(--ease-pop);
+}
+.nav__item:active svg {
+  transform: scale(0.86);
+}
+.nav__label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    opacity var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-pop);
+}
+.nav__item[aria-current='page'] .nav__label {
+  opacity: 1;
+  transform: translateY(0);
+}
+.nav__item[aria-current='page'] svg {
+  transform: translateY(-1px);
+}
+.nav__item:not([aria-current='page']) {
+  color: var(--ink-faint);
+}
+
+/* The lit blob behind the active tab's icon — sized to the icon alone, so it
+   never crowds the label underneath it. */
+.nav__blip {
+  position: absolute;
+  top: 8px;
+  width: 42px;
+  height: 33px;
+  border-radius: 11px;
+  background: var(--accent);
+  border: var(--border-hair);
+  z-index: -1;
+  animation: blip-in var(--t-base) var(--ease-pop) both;
+}
+@keyframes blip-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* Centre shutter button */
+.nav__shutter {
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: 62px;
+  height: 62px;
+  margin-top: -26px;
+  padding: 0;
+  border: var(--border-thick);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: var(--pop);
+  transition:
+    transform var(--t-quick) var(--ease-mid),
+    box-shadow var(--t-quick) var(--ease-mid);
+  -webkit-tap-highlight-color: transparent;
+}
+.nav__shutter:active {
+  transform: translate(3px, 4px) scale(0.96);
+  box-shadow: 0 0 0 var(--ink);
+}
+@media (hover: hover) {
+  .nav__shutter:hover {
+    transform: translateY(-2px);
+    box-shadow: 5px 7px 0 var(--ink);
+  }
+}
+.nav__shutter--done {
+  background: var(--green);
+}
+
+/* A quiet ring that pulses while today's frame is still unused. */
+.nav__shutter::after {
+  content: '';
+  position: absolute;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 2.5px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.nav__shutter--nudge::after {
+  animation: shutter-ring 3.4s var(--ease-sine) infinite;
+}
+@keyframes shutter-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  45%,
+  100% {
+    transform: scale(1.32);
+    opacity: 0;
+  }
+}
+
+/* ============================================================
+   Page transitions — direction-aware, driven by the router
+   ============================================================ */
+
+.page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+  will-change: transform, opacity;
+}
+.page--forward {
+  animation: page-in-forward var(--t-page) var(--ease-out) both;
+}
+.page--back {
+  animation: page-in-back var(--t-page) var(--ease-out) both;
+}
+.page--none {
+  animation: page-fade var(--t-base) var(--ease-out) both;
+}
+
+@keyframes page-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(34px);
+  }
+}
+@keyframes page-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+@keyframes page-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page--forward,
+  .page--back,
+  .page--none {
+    animation: none;
+  }
+  .nav,
+  .nav__blip {
+    animation: none;
+  }
+  .nav__shutter--nudge::after {
+    animation: none;
+  }
+  .frame img {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Entrance choreography for lists
+   Stagger stays inside a 400ms budget; no more than a third of
+   the visible cards are in motion at any moment.
+   ============================================================ */
+
+.enter {
+  animation: card-in var(--t-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+.enter-pop {
+  animation: pop-in var(--t-base) var(--ease-pop) both;
+  animation-delay: calc(var(--i, 0) * 32ms);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .enter-pop {
+    animation: none;
+  }
+}

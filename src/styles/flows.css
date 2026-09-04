@@ -1,0 +1,338 @@
+/* ============================================================
+   Create / Join flows
+   ============================================================ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  padding: var(--s2) var(--s5) var(--s8);
+}
+
+/* ---------- Accent swatches ---------- */
+
+.swatches {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: var(--border);
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--pop-sm);
+  display: grid;
+  place-items: center;
+  transition:
+    transform var(--t-quick) var(--ease-pop),
+    box-shadow var(--t-quick) var(--ease-mid);
+}
+.swatch:active {
+  transform: translate(2px, 3px);
+  box-shadow: 0 0 0 var(--ink);
+}
+.swatch[aria-pressed='true'] {
+  transform: translateY(-3px);
+  box-shadow: 3px 5px 0 var(--ink);
+}
+
+/* ---------- Cover dropzone ---------- */
+
+.dropzone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 168px;
+  padding: var(--s5);
+  border: var(--line) dashed rgba(17, 17, 17, 0.42);
+  border-radius: var(--r-lg);
+  background: rgba(255, 253, 247, 0.6);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color var(--t-quick) linear, background-color var(--t-quick) linear;
+}
+@media (hover: hover) {
+  .dropzone:hover {
+    border-color: var(--ink);
+    background: var(--paper);
+  }
+}
+.dropzone--filled {
+  border-style: solid;
+  border-color: var(--ink);
+  padding: 0;
+  min-height: 0;
+  aspect-ratio: 4 / 3;
+  box-shadow: var(--pop);
+}
+.dropzone__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.dropzone__plus {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: var(--border);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--pop-sm);
+}
+.dropzone__hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.dropzone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dropzone__swap {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+
+/* ---------- Celebration ---------- */
+
+.celebrate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  text-align: center;
+  gap: var(--s4);
+  padding: var(--s8) var(--s5) var(--s7);
+}
+
+.bigcheck {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  border: var(--border-thick);
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: var(--pop);
+  animation: check-pop var(--t-slow) var(--ease-pop) both;
+}
+.bigcheck svg {
+  animation: check-draw var(--t-base) var(--ease-out) 180ms both;
+}
+@keyframes check-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-16deg);
+  }
+}
+@keyframes check-draw {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+.celebrate__title {
+  font-size: clamp(30px, 10vw, 40px);
+  /* Roomier than the usual 0.9: the stroke plus the 5px drop shadow needs
+     somewhere to go, or a second line lands on the first one's shadow. */
+  line-height: 1.06;
+  color: var(--paper);
+  -webkit-text-stroke: 2.6px var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 4px 5px 0 var(--ink);
+  animation: word-drop var(--t-slow) var(--ease-pop) 90ms both;
+}
+.celebrate__sub {
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  max-width: 30ch;
+  animation: card-in var(--t-slow) var(--ease-out) 200ms both;
+}
+
+/* Confetti: a handful of paper scraps, not a parade */
+.confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti span {
+  position: absolute;
+  top: -18px;
+  width: 9px;
+  height: 14px;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
+  animation: confetti-fall 1400ms var(--ease-in) both;
+}
+@keyframes confetti-fall {
+  from {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(560px) rotate(420deg);
+    opacity: 0;
+  }
+}
+
+/* ---------- Invite code ticket ---------- */
+
+.ticket {
+  position: relative;
+  width: 100%;
+  padding: var(--s5);
+  border: var(--border-thick);
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  box-shadow: var(--pop);
+  text-align: center;
+  animation: card-in var(--t-slow) var(--ease-out) 280ms both;
+}
+/* A tear line across the stub, with the punched notches sitting on it — the
+   notches ride the divider so they can't drift onto a button. */
+.ticket__tear {
+  position: relative;
+  height: 0;
+  margin: 0 calc(var(--s5) * -1) var(--s5);
+  border-top: 2.5px dashed rgba(17, 17, 17, 0.32);
+}
+.ticket__tear::before,
+.ticket__tear::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  border: var(--border-thick);
+  border-radius: 50%;
+  background: var(--cream);
+  transform: translateY(-50%);
+}
+.ticket__tear::before {
+  left: -12px;
+  clip-path: inset(0 0 0 50%);
+}
+.ticket__tear::after {
+  right: -12px;
+  clip-path: inset(0 50% 0 0);
+}
+.ticket__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.ticket__code {
+  margin: 10px 0 var(--s5);
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 11vw, 44px);
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+.ticket__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- Join ---------- */
+
+.join {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  padding: var(--s4) var(--s5) var(--s8);
+}
+.join__hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+.join__hint code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--yellow);
+  border: var(--border-hair);
+  border-radius: 5px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.join__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: var(--border-hair);
+  border-radius: var(--r);
+  background: #fbe3de;
+  color: #8f2f21;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+  animation: pop-in var(--t-base) var(--ease-pop) both;
+}
+
+/* Preview of the album you're about to join */
+.joincard {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s4);
+  border: var(--border-thick);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  box-shadow: var(--pop);
+  animation: pop-in var(--t-base) var(--ease-pop) both;
+}
+.joincard__name {
+  font-family: var(--font-display);
+  font-size: 21px;
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+}
+.joincard__meta {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* "Next frame opens in 6h 12m" — the pause is the product, so name it. */
+.nextframe {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: var(--s6);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}

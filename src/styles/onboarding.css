@@ -1,0 +1,191 @@
+/* ============================================================
+   Onboarding
+   ============================================================ */
+
+.ob {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s6) var(--s6) calc(var(--s6) + var(--safe-b));
+  background: var(--cream);
+  overflow: hidden;
+}
+
+/* Faint dotted press-sheet texture behind everything */
+.ob::before {
+  content: '';
+  position: absolute;
+  inset: -40px;
+  background-image: radial-gradient(circle at 1px 1px, rgba(17, 17, 17, 0.07) 1px, transparent 0);
+  background-size: 12px 12px;
+  pointer-events: none;
+}
+
+/* Bottom-anchored: the mark and the question sit just above the CTA, with
+   open paper above them, like a poster with a wide top margin. */
+.ob__body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: var(--s7);
+  min-height: 0;
+}
+
+/* ---------- Wordmark ---------- */
+
+.wordmark {
+  position: relative;
+  display: inline-block;
+}
+.wordmark__line {
+  display: block;
+  font-family: var(--font-display);
+  font-size: clamp(52px, 17vw, 74px);
+  line-height: 0.83;
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+  color: var(--paper);
+  -webkit-text-stroke: 3px var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 5px 6px 0 var(--ink);
+  animation: word-drop var(--t-slow) var(--ease-pop) both;
+}
+.wordmark__line:nth-child(1) {
+  animation-delay: 40ms;
+}
+.wordmark__line:nth-child(2) {
+  animation-delay: 130ms;
+}
+.wordmark__line:nth-child(3) {
+  animation-delay: 220ms;
+}
+.wordmark__line--pink {
+  color: var(--pink);
+}
+@keyframes word-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-22px) rotate(-2deg);
+  }
+}
+
+/* The camera sits above the mark, tilted, clear of the letterforms. */
+.ob__camera {
+  display: block;
+  margin: 0 0 var(--s5) auto;
+  transform: rotate(7deg);
+  transform-origin: center;
+  animation: camera-in var(--t-slow) var(--ease-pop) 300ms both;
+}
+@keyframes camera-in {
+  from {
+    opacity: 0;
+    transform: rotate(-13deg) scale(0.68);
+  }
+}
+
+.ob__tagline {
+  margin-top: var(--s6);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink-soft);
+  max-width: 22ch;
+  animation: card-in var(--t-slow) var(--ease-out) 340ms both;
+}
+.ob__rule {
+  margin: var(--s5) 0 0;
+  animation: rule-draw var(--t-slow) var(--ease-out) 420ms both;
+}
+@keyframes rule-draw {
+  from {
+    width: 0;
+  }
+}
+
+.ob__foot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  animation: card-in var(--t-slow) var(--ease-out) 480ms both;
+}
+
+.ob__step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.ob__q {
+  font-size: clamp(34px, 11vw, 44px);
+  line-height: 0.9;
+}
+
+.ob__hello {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: var(--s3);
+}
+
+/* ---------- Big choice cards ---------- */
+
+.choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  width: 100%;
+  padding: var(--s5);
+  border: var(--border-thick);
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--pop-lg);
+  transition:
+    transform var(--t-quick) var(--ease-mid),
+    box-shadow var(--t-quick) var(--ease-mid);
+  -webkit-tap-highlight-color: transparent;
+}
+.choice:active {
+  transform: translate(6px, 8px);
+  box-shadow: 0 0 0 var(--ink);
+}
+@media (hover: hover) {
+  .choice:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 10px 0 var(--ink);
+  }
+}
+.choice__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border: var(--border);
+  border-radius: var(--r-sm);
+  background: var(--accent);
+}
+.choice__title {
+  font-size: 19px;
+  margin-bottom: 3px;
+}
+.choice__sub {
+  font-size: 13px;
+  color: var(--ink-faint);
+  line-height: 1.35;
+}
+
+/* Little hand-drawn accents */
+.doodle {
+  position: absolute;
+  pointer-events: none;
+  color: var(--ink);
+}

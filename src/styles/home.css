@@ -1,0 +1,248 @@
+/* ============================================================
+   Home
+   ============================================================ */
+
+.home__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s6) var(--s5) var(--s5);
+}
+.home__hi {
+  flex: 1;
+  min-width: 0;
+}
+.home__greeting {
+  font-size: 32px;
+  line-height: 0.92;
+  overflow-wrap: anywhere;
+}
+.home__sub {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--ink-faint);
+  line-height: 1.35;
+}
+.home__datechip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  border: var(--border);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  box-shadow: var(--pop-sm);
+  transform: rotate(2.5deg);
+}
+.home__datechip b {
+  font-family: var(--font-display);
+  font-size: 21px;
+  line-height: 1;
+}
+.home__datechip span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ---------- Today's prompt ---------- */
+
+.prompt {
+  position: relative;
+  margin: 0 var(--s5) var(--s6);
+  padding: var(--s5);
+  border: var(--border-thick);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  box-shadow: var(--pop);
+  overflow: hidden;
+  animation: card-in var(--t-slow) var(--ease-out) both;
+}
+.prompt--done {
+  background: var(--paper);
+}
+.prompt__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.prompt__title {
+  font-size: 23px;
+  line-height: 0.95;
+  max-width: 17ch;
+}
+.prompt__body {
+  margin-top: 8px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  max-width: 30ch;
+}
+.prompt__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s4);
+}
+
+/* ---------- Section heading ---------- */
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s5) var(--s4);
+}
+.section__title {
+  font-size: 19px;
+}
+.section__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+/* ---------- Album card ---------- */
+
+.albums {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: 0 var(--s5);
+}
+
+.albumcard {
+  display: flex;
+  width: 100%;
+  padding: 0;
+  border: var(--border-thick);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--pop);
+  transition:
+    transform var(--t-quick) var(--ease-mid),
+    box-shadow var(--t-quick) var(--ease-mid);
+  -webkit-tap-highlight-color: transparent;
+  animation: card-in var(--t-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+.albumcard:active {
+  transform: translate(4px, 5px);
+  box-shadow: 0 0 0 var(--ink);
+}
+@media (hover: hover) {
+  .albumcard:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 7px 0 var(--ink);
+  }
+  .albumcard:hover .albumcard__img {
+    transform: scale(1.05);
+  }
+}
+
+.albumcard__shot {
+  position: relative;
+  width: 108px;
+  flex: 0 0 auto;
+  border-right: var(--border-thick);
+  background: var(--paper-sunk);
+  overflow: hidden;
+}
+.albumcard__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--t-slow) var(--ease-out);
+}
+.albumcard__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: rgba(17, 17, 17, 0.3);
+}
+/* Unposted albums get a corner fold, like a page waiting to be turned */
+.albumcard__dot {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--pink);
+  animation: dot-pulse 2.4s var(--ease-sine) infinite;
+}
+@keyframes dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.22);
+  }
+}
+
+.albumcard__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  padding: var(--s4);
+}
+.albumcard__name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.albumcard__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+.albumcard__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: 2px;
+}
+.albumcard__chev {
+  display: grid;
+  place-items: center;
+  padding-right: var(--s4);
+  color: var(--ink);
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .albumcard,
+  .prompt {
+    animation: none;
+  }
+  .albumcard__dot {
+    animation: none;
+  }
+}
