@@ -6,12 +6,15 @@
 import { useState } from 'react';
 
 import { CameraMark, IconUsers } from '../components/Icons';
-import { Button } from '../components/ui';
+import { Button, TextField } from '../components/ui';
 import { supabaseConfigured, useApp } from '../state/AppContext';
 
 export function Welcome() {
   const { signInWithGoogle, startDemo } = useApp();
   const [signingIn, setSigningIn] = useState(false);
+  const [email, setEmail] = useState(false);
+
+  if (email) return <EmailForm onBack={() => setEmail(false)} />;
 
   return (
     <div className="ob">
@@ -32,23 +35,30 @@ export function Welcome() {
 
       <div className="ob__foot">
         {supabaseConfigured && (
-          <Button
-            variant="primary"
-            size="lg"
-            block
-            icon={<GoogleMark />}
-            disabled={signingIn}
-            onClick={async () => {
-              setSigningIn(true);
-              try {
-                await signInWithGoogle();
-              } finally {
-                setSigningIn(false);
-              }
-            }}
-          >
-            {signingIn ? 'Opening Google…' : 'Sign in with Google'}
-          </Button>
+          <>
+            {/* Email first: it is the only route that never leaves the app,
+                so it is the one that works everywhere. */}
+            <Button variant="primary" size="lg" block onClick={() => setEmail(true)}>
+              Continue with email
+            </Button>
+
+            <Button
+              variant="plain"
+              block
+              icon={<GoogleMark />}
+              disabled={signingIn}
+              onClick={async () => {
+                setSigningIn(true);
+                try {
+                  await signInWithGoogle();
+                } finally {
+                  setSigningIn(false);
+                }
+              }}
+            >
+              {signingIn ? 'Opening Google…' : 'Sign in with Google'}
+            </Button>
+          </>
         )}
 
         <Button variant="ghost" block icon={<IconUsers size={18} />} onClick={startDemo}>
@@ -60,6 +70,127 @@ export function Welcome() {
             ? 'Sign in to share albums · Demo stays on this device'
             : 'No account configured — demo only'}
         </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Email and password, in one screen that does both jobs.
+ *
+ * Nothing here leaves the WebView: no browser hand-off, no deep link back, no
+ * SMS provider to pay for. That is the entire point of it — it is the route
+ * with the fewest moving parts, and so the one most likely to just work.
+ */
+function EmailForm({ onBack }: { onBack: () => void }) {
+  const { signInWithEmail, signUpWithEmail } = useApp();
+  const [mode, setMode] = useState<'in' | 'up'>('in');
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const joining = mode === 'up';
+
+  const submit = async () => {
+    setError(null);
+    if (!address.includes('@')) {
+      setError('That does not look like an email address.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Passwords need at least six characters.');
+      return;
+    }
+    if (joining && name.trim().length < 2) {
+      setError('We need something to call you.');
+      return;
+    }
+    setBusy(true);
+    // A success navigates by itself: the session change boots live mode.
+    const failure = joining
+      ? await signUpWithEmail(address, password, name)
+      : await signInWithEmail(address, password);
+    setBusy(false);
+    if (failure) setError(failure);
+  };
+
+  return (
+    <div className="ob">
+      <div className="ob__body">
+        <div className="ob__step">
+          <div>
+            <h1 className="ob__q">
+              {joining ? (
+                <>
+                  Make an
+                  <br />
+                  account
+                </>
+              ) : (
+                <>
+                  Welcome
+                  <br />
+                  back
+                </>
+              )}
+            </h1>
+            <p className="ob__tagline">
+              {joining
+                ? 'One account, every album you are in.'
+                : 'Sign in to find your albums.'}
+            </p>
+          </div>
+          {joining && (
+            <TextField
+              label="Your name"
+              placeholder="Yarin"
+              value={name}
+              maxLength={24}
+              autoComplete="name"
+              onChange={(e) => setName(e.currentTarget.value)}
+            />
+          )}
+          <TextField
+            label="Email"
+            type="email"
+            placeholder="you@example.com"
+            value={address}
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            onChange={(e) => setAddress(e.currentTarget.value)}
+          />
+          <TextField
+            label="Password"
+            type="password"
+            placeholder="At least six characters"
+            value={password}
+            autoComplete={joining ? 'new-password' : 'current-password'}
+            onChange={(e) => setPassword(e.currentTarget.value)}
+            error={error ?? undefined}
+          />
+        </div>
+      </div>
+
+      <div className="ob__foot">
+        <Button variant="primary" size="lg" block disabled={busy} onClick={() => void submit()}>
+          {busy ? 'One moment…' : joining ? 'Create account' : 'Sign in'}
+        </Button>
+        <Button
+          variant="ghost"
+          block
+          onClick={() => {
+            setError(null);
+            setMode(joining ? 'in' : 'up');
+          }}
+        >
+          {joining ? 'I already have an account' : 'I need an account'}
+        </Button>
+        <Button variant="ghost" block onClick={onBack}>
+          Back
+        </Button>
       </div>
     </div>
   );

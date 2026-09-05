@@ -32,7 +32,13 @@ npm run icons        # redraw every app icon from one source
 npm run android      # build the web app into the native project
 ```
 
-The smoke test drives a real browser through onboarding, album creation,
+`npm run smoke` runs two suites. `scripts/navcheck.mjs` is the smaller one:
+it presses every button on the bottom navigation and walks the email sign-in
+screen. It exists because the nav bar was once completely dead on a phone
+while looking perfect in a browser, and nothing in the suite had ever actually
+pressed it.
+
+The main smoke test drives a real browser through onboarding, album creation,
 joining by code, uploading, the one-per-day limit, persistence across reload,
 every screen, desktop and 320px layouts, reduced-motion, image cleanup, a
 broken image store, and the midnight rollover. Add `--shots=<dir>` to capture
@@ -214,9 +220,22 @@ with a fake world of four albums and months of history. No account, nothing
 shared, nothing leaves the device. This is what the smoke suite exercises,
 since a headless browser can't complete Google's consent screen.
 
-**Live** — a real Google account, a shared Postgres database, photos in a
-private storage bucket. Albums sync between phones; the invite code becomes
-the only way into someone else's album.
+**Live** — a real account, a shared Postgres database, photos in a private
+storage bucket. Albums sync between phones; the invite code becomes the only
+way into someone else's album.
+
+There are two ways to hold that account, and **email and password is the one
+the front door offers first**. It is a single request from inside the WebView:
+no browser hand-off, no deep link back, no SMS provider to pay for. Google
+sign-in is the alternative, and it is the one with somewhere to go wrong —
+Google refuses consent inside an embedded WebView, so it has to leave for a
+Chrome tab and be handed back through a custom-scheme deep link.
+
+Sign-up needs one setting to match: with **Confirm email** on (Supabase's
+default), a new account has no session until its address is verified, and that
+verification link has the same round trip to make. The app says so rather than
+appearing to hang, but for the app to sign people up on the spot, turn it off
+under Authentication → Sign In / Providers → Email.
 
 `lib/backend.ts` holds both behind one interface. Screens never touch either —
 they call `commands` on the app context, which forwards to whichever backend
@@ -283,9 +302,15 @@ with it. It is not a Play Store key and must not become one.
   Back from an open lightbox navigates the page out from underneath it.
 - **Resume**, because a backgrounded Android app never fires `focus`; live mode
   would come back showing whatever it had before the phone was pocketed.
-- **Edge-to-edge**, forced on every app by Android 15. The page now pads itself
-  past the status bar (`--safe-t`) and paints cream up there instead of leaving
-  a black strip.
+- **Window insets**, which is why the bottom navigation was dead on a real
+  phone while working perfectly in a browser. Android 15 lays every app out
+  edge to edge whether it asks to or not, and Android's WebView never
+  populates `env(safe-area-inset-*)` — they read as zero. So the nav bar was
+  drawn a few pixels from the bottom of the display, underneath the gesture
+  bar, where the system takes the touches before the app can. `MainActivity`
+  now reads the insets where they are actually known and pads the content view
+  with them. The window background is the app's cream, so the strips behind
+  the system bars still look like part of the app.
 - **The share sheet.** `navigator.share` does not exist in an Android WebView,
   so the invite button fell through to "copied to clipboard" — a share, but not
   the one anyone wants when the point is to send it to a friend in WhatsApp.

@@ -81,6 +81,9 @@ interface AppValue {
   commands: Commands;
   startDemo: () => void;
   signInWithGoogle: () => Promise<void>;
+  /** Resolves to an error message, or null when the user is on their way in. */
+  signInWithEmail: (email: string, password: string) => Promise<string | null>;
+  signUpWithEmail: (email: string, password: string, name: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   toast: (message: string, tone?: Toast['tone']) => void;
   toasts: Toast[];
@@ -478,6 +481,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await openExternal(data.url);
   }, [toast]);
 
+  /*
+   * Email and password: the one way in that never leaves the app.
+   *
+   * Google's flow has to hand off to a browser and be handed back through a
+   * deep link, and every step of that is a place for an Android build to lose
+   * the thread. This one is a single request from inside the WebView, so
+   * there is nothing to lose.
+   */
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    if (!supabase) return 'This build has no Supabase project configured.';
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    // Success needs nothing here: it fires SIGNED_IN, which boots live mode.
+    return error ? error.message : null;
+  }, []);
+
+  const signUpWithEmail = useCallback(
+    async (email: string, password: string, name: string) => {
+      if (!supabase) return 'This build has no Supabase project configured.';
+      const { data: created, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        // The database trigger reads full_name when it creates the profile.
+        options: { data: { full_name: name.trim() } },
+      });
+      if (error) return error.message;
+      // No session on a fresh sign-up means the project wants the address
+      // confirmed first. Say so plainly rather than appearing to hang.
+      if (!created.session) {
+        return `Check ${email.trim()} for a confirmation link, then sign in.`;
+      }
+      return null;
+    },
+    [],
+  );
+
   /* ---- Native: the other half of sign-in ---- */
 
   useEffect(() => {
@@ -550,6 +592,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       commands,
       startDemo,
       signInWithGoogle,
+      signInWithEmail,
+      signUpWithEmail,
       signOut,
       toast,
       toasts,
@@ -565,6 +609,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       commands,
       startDemo,
       signInWithGoogle,
+      signInWithEmail,
+      signUpWithEmail,
       signOut,
       toast,
       toasts,
