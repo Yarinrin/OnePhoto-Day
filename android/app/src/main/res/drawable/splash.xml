@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The window background while the WebView boots. Flat brand cream with the mark
+  centred on it, so the very first frame of the app is already the app's colour
+  rather than a white flash.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brandPaper" />
+    <item>
+        <bitmap
+            android:src="@drawable/splash_mark"
+            android:gravity="center" />
+    </item>
+</layer-list>

@@ -1,13 +1,13 @@
 /**
  * A single photo, full bleed, mounted on card like a print pulled out of the
- * album. Escape or the scrim closes it; the caption and byline travel with it.
+ * album. Escape, Back or the scrim closes it; the caption and byline travel
+ * with it.
  */
-
-import { useEffect } from 'react';
 
 import { IconX } from './Icons';
 import { useImageSrc } from './PhotoImage';
 import { Avatar, IconButton } from './ui';
+import { useDismissible } from '../lib/dismiss';
 import type { Photo } from '../lib/types';
 import { formatDayLong, formatTime } from '../lib/util';
 import { useApp } from '../state/AppContext';
@@ -24,12 +24,7 @@ export function Lightbox({
   const { data } = useApp();
   const src = useImageSrc(photo?.image);
 
-  useEffect(() => {
-    if (!photo) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [photo, onClose]);
+  useDismissible(Boolean(photo), onClose);
 
   if (!photo) return null;
 

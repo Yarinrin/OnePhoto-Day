@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The same palette the web app uses, so the system chrome around the
+         WebView belongs to the app rather than to Android's defaults. -->
+    <color name="brandPaper">#F7F1E5</color>
+    <color name="brandInk">#111111</color>
+    <color name="brandYellow">#FFD84D</color>
+
+    <color name="colorPrimary">#FFD84D</color>
+    <color name="colorPrimaryDark">#111111</color>
+    <color name="colorAccent">#FF8FA3</color>
+</resources>

@@ -7,6 +7,7 @@
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { isNative } from './native';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -19,8 +20,12 @@ export const supabase: SupabaseClient | null = supabaseConfigured
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        // The OAuth redirect comes back with the session in the URL hash.
-        detectSessionInUrl: true,
+        // On the web the OAuth redirect lands back on our own page carrying
+        // the code, so let the client pick it up. In the Android app there is
+        // no such navigation — the code arrives as a deep link and is
+        // exchanged by hand — and the app's own URL never carries one, so
+        // leaving this on would only be a chance to misread a route.
+        detectSessionInUrl: !isNative,
       },
     })
   : null;

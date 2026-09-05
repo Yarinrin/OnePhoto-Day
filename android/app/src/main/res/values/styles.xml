@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/brandPaper</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+        <!-- Android 15 draws every app edge to edge and ignores statusBarColor,
+             so the cream behind the status bar comes from the page itself: the
+             safe-area padding in tokens.css. All that's left to say here is
+             that the bar's own icons must be dark, or they'd be white on
+             cream. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <!-- The status bar is cream too, with dark icons on it. Without this
+             the bar stays black and the app looks like it starts an inch
+             below the top of the screen. -->
+        <item name="android:statusBarColor">@color/brandPaper</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

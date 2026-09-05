@@ -84,6 +84,9 @@
   --app-w: 460px;
   --nav-h: 74px;
   --safe-b: env(safe-area-inset-bottom, 0px);
+  /* Both are 0 in a desktop browser. They matter on a phone, and especially in
+     the Android app, which draws edge to edge under the status bar. */
+  --safe-t: env(safe-area-inset-top, 0px);
 }
 
 /* Album accent themes — set via data-accent on any subtree */

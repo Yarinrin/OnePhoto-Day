@@ -28,6 +28,8 @@ Other scripts:
 npm run build        # typecheck + production build
 npm run lint         # oxlint
 npm run smoke        # end-to-end checks (needs `npm run dev` running)
+npm run icons        # redraw every app icon from one source
+npm run android      # build the web app into the native project
 ```
 
 The smoke test drives a real browser through onboarding, album creation,
@@ -218,7 +220,62 @@ browser inside it can reach Supabase; only the database tooling could, by a
 different route. Run it from a machine with normal network access, and treat
 live mode as unproven until it goes green.
 
+## The Android app
+
+The phone app is the web app, bundled *inside* the APK — `android/` is a
+Capacitor shell whose WebView loads `dist/` from the package rather than
+fetching it from a server. That's the whole reason this route was taken over
+wrapping a hosted site: there is no site to host, no domain to buy, no
+`assetlinks.json` to publish, and demo mode works on a plane.
+
+**Get an APK.** Push, or run the **Android APK** workflow by hand from the
+Actions tab. It builds on GitHub because the Android SDK and the Android Gradle
+Plugin come from `dl.google.com`, which the sandbox this was developed in blocks
+outright. The APK lands on the run as an artifact; tag a commit `v1.0` and it
+lands on a Release too, which is a link you can send someone.
+
+Installing it means allowing "install unknown apps" for whatever opens the file
+— that is what sideloading is, and it is the only way to install an Android app
+without a Play Store listing.
+
+**Signing.** `android/sideload.keystore` is committed and its password is in the
+`build.gradle` next to it. That is deliberate: it makes every build sign
+identically, so a new APK installs over the old one instead of Android treating
+it as a different app and demanding an uninstall — which would take the photos
+with it. It is not a Play Store key and must not become one.
+
+**What the shell adds** beyond hosting the pages:
+
+- **Sign-in**, which can't work the web way. Google refuses to render its
+  consent screen inside an embedded WebView, so the app hands the URL to a real
+  Chrome tab and gets the result back as a deep link on
+  `com.yarinrin.onephotoday://auth` — declared as an intent filter in the
+  manifest, exchanged for a session in `AppContext`. Google Cloud Console needs
+  no change for this: Google's client is still Supabase, and Supabase is still
+  the one redirecting. **Supabase does** — that URL has to be added under
+  Authentication → URL Configuration → Redirect URLs, or Supabase refuses to
+  redirect to it and sign-in stops at a blank tab. Demo mode doesn't care.
+- **The Back button**, which is one hardware key doing three jobs: close the
+  open lightbox or dialog, else go back a screen, else leave the app. The
+  overlay half needed a shared dismissal stack (`lib/dismiss.ts`) — without it
+  Back from an open lightbox navigates the page out from underneath it.
+- **Resume**, because a backgrounded Android app never fires `focus`; live mode
+  would come back showing whatever it had before the phone was pocketed.
+- **Edge-to-edge**, forced on every app by Android 15. The page now pads itself
+  past the status bar (`--safe-t`) and paints cream up there instead of leaving
+  a black strip.
+
+Icons and the launch screen come from `npm run icons`, which renders one drawing
+— the camera mark — to every size the browser, the manifest, and five Android
+density buckets ask for. It exists because the web icons and the phone icons
+were briefly two drawings of the same thing that had drifted apart.
+
 ## Known limits
+
+**The APK has never been built or run.** The native project, the signing, the
+icons and the workflow are all in place and the XML and YAML are valid, but
+`dl.google.com` is blocked here, so no Gradle build has ever executed and no
+phone has ever launched the app. The first CI run is the first real test of it.
 
 **Live mode is untested end to end.** The database half is thoroughly verified —
 schema, security rules, the daily-limit constraint, and the privacy model, all

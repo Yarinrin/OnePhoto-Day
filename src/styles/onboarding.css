@@ -7,7 +7,7 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--s6) var(--s6) calc(var(--s6) + var(--safe-b));
+  padding: calc(var(--s6) + var(--safe-t)) var(--s6) calc(var(--s6) + var(--safe-b));
   background: var(--cream);
   overflow: hidden;
 }

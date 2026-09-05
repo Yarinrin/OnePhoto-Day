@@ -1,0 +1,75 @@
+# Builds the installable Android app.
+#
+# This runs on GitHub rather than anywhere else for one concrete reason: the
+# Android SDK and the Android Gradle Plugin are served from dl.google.com, and
+# the sandbox this app was developed in blocks that host outright. GitHub's
+# runners already have the SDK installed and can reach it, so the APK is built
+# where the tools actually are.
+#
+# The result is attached to the run as an artifact, and — when the run is for a
+# tag — to a GitHub Release, which is the version you can hand someone a link to.
+
+name: Android APK
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the web app
+        run: npm run build
+
+      # Copies dist/ into the native project and regenerates the plugin glue.
+      # Both are gitignored, so this is what makes the checkout buildable.
+      - name: Sync the native project
+        run: npx cap sync android
+
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Name it after the commit
+        id: name
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             "out/one-photo-day-${GITHUB_SHA::7}.apk"
+          echo "apk=out/one-photo-day-${GITHUB_SHA::7}.apk" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: one-photo-day-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Attach it to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk

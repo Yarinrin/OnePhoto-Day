@@ -27,6 +27,14 @@ import {
   type Mode,
   type PickedImage,
 } from '../lib/backend';
+import {
+  closeExternal,
+  isNative,
+  NATIVE_REDIRECT,
+  onDeepLink,
+  onResume,
+  openExternal,
+} from '../lib/native';
 import { collectOrphanedImages, dataStore } from '../lib/store';
 import { supabase, supabaseConfigured } from '../lib/supabase';
 import { emptyData, type AccentKey, type AppData } from '../lib/types';
@@ -411,11 +419,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast('This build has no Supabase project configured.', 'bad');
       return;
     }
-    const { error } = await supabase.auth.signInWithOAuth({
+
+    // On the web this is one navigation: leave for Google, come back signed in.
+    if (!isNative) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) toast(error.message, 'bad');
+      return;
+    }
+
+    // In the app it's three steps, because Google refuses to render consent
+    // inside an embedded WebView. Ask Supabase for the URL but don't follow it
+    // (`skipBrowserRedirect`), hand it to a real Chrome tab, and wait for the
+    // deep link to come back — picked up by the listener below.
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: NATIVE_REDIRECT, skipBrowserRedirect: true },
     });
-    if (error) toast(error.message, 'bad');
+    if (error || !data?.url) {
+      toast(error?.message ?? 'Could not start sign-in.', 'bad');
+      return;
+    }
+    await openExternal(data.url);
+  }, [toast]);
+
+  /* ---- Native: the other half of sign-in ---- */
+
+  useEffect(() => {
+    if (!isNative || !supabase) return;
+    const sb = supabase;
+
+    return onDeepLink((url) => {
+      // PKCE hands back `?code=…`; an error comes back as `?error=…`. Anything
+      // else on our scheme isn't ours to act on.
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return;
+      }
+      const code = parsed.searchParams.get('code');
+      const failed = parsed.searchParams.get('error_description') ?? parsed.searchParams.get('error');
+
+      if (failed) {
+        void closeExternal();
+        toast(failed, 'bad');
+        return;
+      }
+      if (!code) return;
+
+      void (async () => {
+        const { error } = await sb.auth.exchangeCodeForSession(code);
+        await closeExternal();
+        // Success needs no handling here: exchanging the code fires
+        // SIGNED_IN, and the session listener above boots live mode.
+        if (error) toast(error.message, 'bad');
+      })();
+    });
   }, [toast]);
 
   const signOut = useCallback(async () => {
@@ -433,7 +495,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (mode !== 'live') return;
     const onFocus = () => void refresh();
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    // A backgrounded Android app never fires `focus` on return, so the app
+    // needs the platform's own resume event to catch up on the same moment.
+    const stopResume = onResume(onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      stopResume();
+    };
   }, [mode, refresh]);
 
   const value = useMemo(

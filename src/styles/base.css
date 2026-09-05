@@ -127,6 +127,9 @@ ol {
 
 .screen__scroll {
   flex: 1;
+  /* Clears the status bar / notch. The page paints cream behind it either
+     way, so the bar reads as part of the app rather than a black strip. */
+  padding-top: var(--safe-t);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;

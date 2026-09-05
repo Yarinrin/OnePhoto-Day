@@ -15,6 +15,9 @@ import {
   type ReactNode,
 } from 'react';
 
+import { dismissTop } from '../lib/dismiss';
+import { exitApp, onHardwareBack } from '../lib/native';
+
 export type Route =
   | { name: 'onboarding' }
   | { name: 'home' }
@@ -134,6 +137,23 @@ export function RouterProvider({ children }: { children: ReactNode }) {
         setRoute(fallback);
       }
     },
+    [],
+  );
+
+  /**
+   * Android's Back button. It's one button doing three jobs, in order: close
+   * whatever overlay is open, else go back a screen, else leave the app. The
+   * WebView's own default is only the middle one, which makes Back from the
+   * first screen do nothing at all and Back from a lightbox navigate out from
+   * underneath it.
+   */
+  useEffect(
+    () =>
+      onHardwareBack(() => {
+        if (dismissTop()) return;
+        if (depth.current > 0) window.history.back();
+        else void exitApp();
+      }),
     [],
   );
 

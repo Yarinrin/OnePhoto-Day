@@ -13,6 +13,7 @@ import {
 } from 'react';
 
 import { IconCheck, IconX } from './Icons';
+import { useDismissible } from '../lib/dismiss';
 import { initials } from '../lib/util';
 import type { Person } from '../lib/types';
 
@@ -247,16 +248,13 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  useDismissible(open, onClose);
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
     // Move focus in so keyboard users land inside the dialog.
     ref.current?.querySelector<HTMLElement>('button, [href], input')?.focus();
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (
