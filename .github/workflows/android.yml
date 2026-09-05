@@ -54,22 +54,38 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleRelease
 
-      - name: Name it after the commit
-        id: name
+      - name: Collect it
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/release/app-release.apk \
-             "out/one-photo-day-${GITHUB_SHA::7}.apk"
-          echo "apk=out/one-photo-day-${GITHUB_SHA::7}.apk" >> "$GITHUB_OUTPUT"
+          cp android/app/build/outputs/apk/release/app-release.apk out/one-photo-day.apk
+          ls -l out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: one-photo-day-apk
-          path: out/*.apk
+          name: one-photo-day-apk-${{ github.sha }}
+          path: out/one-photo-day.apk
           if-no-files-found: error
 
-      - name: Attach it to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # A release, not just an artifact, because an artifact is a zip that only
+      # a signed-in GitHub user can fetch — no use at all on a phone. A release
+      # asset is a plain link you can open in the phone's browser.
+      #
+      # Tagged builds get their own release; every other build overwrites the
+      # rolling `android-latest` one, so there is always exactly one link that
+      # means "the current app".
+      - name: Publish it
         uses: softprops/action-gh-release@v2
         with:
-          files: out/*.apk
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'android-latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Latest Android build' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          body: |
+            **one-photo-day.apk** — built from `${{ github.sha }}`.
+
+            Open this page on an Android phone, download the APK and tap it.
+            Android will ask permission to install apps from wherever you
+            downloaded it; that is what sideloading is, and it is the only way
+            to install an app that isn't on the Play Store.
+
+            "Try the demo" works with no account and no connection.
+          files: out/one-photo-day.apk

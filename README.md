@@ -228,11 +228,13 @@ fetching it from a server. That's the whole reason this route was taken over
 wrapping a hosted site: there is no site to host, no domain to buy, no
 `assetlinks.json` to publish, and demo mode works on a plane.
 
-**Get an APK.** Push, or run the **Android APK** workflow by hand from the
-Actions tab. It builds on GitHub because the Android SDK and the Android Gradle
-Plugin come from `dl.google.com`, which the sandbox this was developed in blocks
-outright. The APK lands on the run as an artifact; tag a commit `v1.0` and it
-lands on a Release too, which is a link you can send someone.
+**Get an APK.** Every push builds one, and the result is published to the
+[latest release](https://github.com/Yarinrin/OnePhoto-Day/releases/latest) as
+`one-photo-day.apk` — a plain link you can open on a phone. Tag a commit `v1.0`
+and that build gets a release of its own instead of overwriting the rolling one.
+
+It builds on GitHub because the Android SDK and the Android Gradle Plugin come
+from `dl.google.com`, which the sandbox this was developed in blocks outright.
 
 Installing it means allowing "install unknown apps" for whatever opens the file
 — that is what sideloading is, and it is the only way to install an Android app
@@ -272,10 +274,12 @@ were briefly two drawings of the same thing that had drifted apart.
 
 ## Known limits
 
-**The APK has never been built or run.** The native project, the signing, the
-icons and the workflow are all in place and the XML and YAML are valid, but
-`dl.google.com` is blocked here, so no Gradle build has ever executed and no
-phone has ever launched the app. The first CI run is the first real test of it.
+**The APK builds, but has never been run.** CI compiles and signs it — a 3.3 MB
+package, green on the first attempt — and `dl.google.com` is blocked here, so
+that build is also the only one that has ever happened: nothing in this
+repository has been installed on a phone. Everything downstream of the compiler
+is therefore unproven, in particular the deep-link sign-in round trip and how
+the layout sits against a real status bar.
 
 **Live mode is untested end to end.** The database half is thoroughly verified —
 schema, security rules, the daily-limit constraint, and the privacy model, all
