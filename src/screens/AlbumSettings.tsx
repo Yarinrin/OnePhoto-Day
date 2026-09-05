@@ -12,6 +12,7 @@ import {
   IconTrash,
   IconUsers,
 } from '../components/Icons';
+import { CoverCropper } from '../components/CoverCropper';
 import { useImageSrc } from '../components/PhotoImage';
 import { PageHeader, Screen } from '../components/Shell';
 import { Button, Modal, TextField, useCopy } from '../components/ui';
@@ -28,17 +29,26 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
   const { push, back, replace } = useRouter();
   const [copied, copy] = useCopy();
   const [confirm, setConfirm] = useState<'leave' | 'delete' | null>(null);
+  const [framing, setFraming] = useState<string | null>(null);
 
   const album = data.albums[albumId];
   const cover = useImageSrc(album?.cover);
 
+  // Picking opens the cropper; only the framed result is saved.
   const picker = useImagePicker(
-    async (dataUrl) => {
-      await commands.setAlbumCover(albumId, { dataUrl });
-      toast('Cover updated', 'ok');
-    },
+    (dataUrl) => setFraming(dataUrl),
     (message) => toast(message, 'bad'),
   );
+
+  const saveCover = async (dataUrl: string) => {
+    setFraming(null);
+    try {
+      await commands.setAlbumCover(albumId, { dataUrl });
+      toast('Cover updated', 'ok');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "That cover couldn't be saved.", 'bad');
+    }
+  };
 
   if (!album) return <NotFound />;
 
@@ -48,6 +58,13 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
   return (
     <Screen nav accent={album.accent}>
       {picker.inputs}
+      {framing && (
+        <CoverCropper
+          src={framing}
+          onCancel={() => setFraming(null)}
+          onDone={(cropped) => void saveCover(cropped)}
+        />
+      )}
       <PageHeader
         title="Album settings"
         subtitle={album.name}

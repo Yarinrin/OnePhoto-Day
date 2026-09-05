@@ -124,6 +124,26 @@ up to 168 days of backlog, plus two you aren't — `BAND-77` and `FLAT-24` — s
 the invite-code flow has something real to find. It's ordinary app data and can
 be edited or deleted like anything else; **Profile → Start over** clears it.
 
+## Covers
+
+A cover is framed, not merely picked. Choosing an image opens a square window
+you drag to pan and pinch — or slide — to zoom, with a thirds grid over it; the
+framed region is what gets baked and saved.
+
+It bakes rather than storing a focal point because a cover is displayed in
+exactly one shape, the thumbnail on an album card, so there is no second aspect
+ratio for a stored offset to serve. The alternative was what shipped first:
+whatever happened to be in the middle became the cover, which turned every
+portrait of a person into a photograph of their chest.
+
+The framing maths is small but easy to get subtly wrong, so the smoke suite
+pins it down with a source image in three flat colours: an untouched frame must
+land on the middle third, dragging must move which third is kept, and no zoom
+level may ever pull the photo off an edge — that would bake a blank stripe into
+the cover. The first run of those checks caught a real bug: a cached image can
+finish loading before the frame has been measured, so centring ran against a
+width of zero and pinned every cover to its top-left corner.
+
 ## Streaks
 
 A streak is days in a row that you posted. Two numbers are tracked, per album
@@ -266,6 +286,17 @@ with it. It is not a Play Store key and must not become one.
 - **Edge-to-edge**, forced on every app by Android 15. The page now pads itself
   past the status bar (`--safe-t`) and paints cream up there instead of leaving
   a black strip.
+- **The share sheet.** `navigator.share` does not exist in an Android WebView,
+  so the invite button fell through to "copied to clipboard" — a share, but not
+  the one anyone wants when the point is to send it to a friend in WhatsApp.
+  Native builds now open Android's own share sheet.
+
+**What a tappable invite link would need.** Sharing sends the album name and
+its code, not a URL, because there is nowhere for a URL to point: the app is
+bundled in the APK and has no website. A link that opens the app for people who
+have it, and a download page for people who don't, needs the site hosted
+somewhere with a real domain — the deployment step this build deliberately
+avoided.
 
 Icons and the launch screen come from `npm run icons`, which renders one drawing
 — the camera mark — to every size the browser, the manifest, and five Android

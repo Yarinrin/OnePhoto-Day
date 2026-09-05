@@ -16,6 +16,7 @@ import './styles/flows.css';
 import './styles/album.css';
 import './styles/lists.css';
 import './styles/lightbox.css';
+import './styles/cropper.css';
 
 import { App } from './App';
 import { AppProvider } from './state/AppContext';

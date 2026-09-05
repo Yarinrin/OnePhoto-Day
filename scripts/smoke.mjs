@@ -459,6 +459,103 @@ for (const [label, opts] of [
 }
 
 /* ------------------------------------------------------------------ */
+/* 5a. Framing a cover                                                 */
+/* ------------------------------------------------------------------ */
+
+{
+  const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
+  const page = await ctx.newPage();
+  await onboard(page);
+  await page.goto(`${BASE}/create`, { waitUntil: 'networkidle' });
+  await page.locator('.field__input').first().fill('Frame Test');
+
+  // A deliberately wide source in three flat colours, so the baked cover
+  // proves *which part* was framed rather than merely that something ran.
+  const wide = await page.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 1200;
+    c.height = 400;
+    const x = c.getContext('2d');
+    x.fillStyle = '#ff0000'; x.fillRect(0, 0, 400, 400);
+    x.fillStyle = '#00ff00'; x.fillRect(400, 0, 400, 400);
+    x.fillStyle = '#0000ff'; x.fillRect(800, 0, 400, 400);
+    return c.toDataURL('image/png');
+  });
+  const pick = async () => {
+    await page.setInputFiles('input[type=file]', {
+      name: 'wide.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(wide.split(',')[1], 'base64'),
+    });
+    await page.waitForTimeout(450);
+  };
+
+  /** Middle pixel of the saved cover preview, as [r,g,b]. */
+  const centreColour = () =>
+    page.evaluate(async () => {
+      const img = document.querySelector('.dropzone img');
+      if (!img) return null;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = c.height = 3;
+      const x = c.getContext('2d');
+      x.drawImage(img, 0, 0, 3, 3);
+      const d = x.getImageData(1, 1, 1, 1).data;
+      return [d[0], d[1], d[2]];
+    });
+  const dominant = (rgb) =>
+    !rgb ? '?' : ['red', 'green', 'blue'][rgb.indexOf(Math.max(...rgb))];
+
+  await pick();
+  check('picking a cover opens the framer', await page.locator('.cropper').isVisible());
+
+  const frame = await page.locator('.cropper__frame').boundingBox();
+  check(
+    'the framing window is square',
+    Math.abs(frame.width - frame.height) < 1.5,
+    `${frame.width.toFixed(0)}×${frame.height.toFixed(0)}`,
+  );
+
+  await page.getByRole('button', { name: 'Use this' }).click();
+  await page.waitForTimeout(450);
+  const centred = dominant(await centreColour());
+  check('an untouched frame takes the middle of the photo', centred === 'green', centred);
+
+  // Dragging right pulls the image right, so the frame lands further left.
+  await pick();
+  const box = await page.locator('.cropper__frame').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 400, box.y + box.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Use this' }).click();
+  await page.waitForTimeout(450);
+  const panned = dominant(await centreColour());
+  check('dragging changes what the cover shows', panned === 'red', panned);
+
+  // Zooming must never pull the photo off an edge; that would bake a blank
+  // stripe into the cover.
+  await pick();
+  await page.locator('.cropper__zoom').fill('2.5');
+  await page.waitForTimeout(150);
+  const gaps = await page.evaluate(() => {
+    const f = document.querySelector('.cropper__frame').getBoundingClientRect();
+    const i = document.querySelector('.cropper__frame img').getBoundingClientRect();
+    return [i.left - f.left, i.top - f.top, f.right - i.right, f.bottom - i.bottom];
+  });
+  check(
+    'the photo still covers the frame when zoomed',
+    gaps.every((g) => g <= 0.5),
+    gaps.map((g) => g.toFixed(1)).join(', '),
+  );
+
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.waitForTimeout(250);
+  check('cancelling closes the framer', (await page.locator('.cropper').count()) === 0);
+  await ctx.close();
+}
+
+/* ------------------------------------------------------------------ */
 /* 5b. A new user starts empty                                         */
 /* ------------------------------------------------------------------ */
 

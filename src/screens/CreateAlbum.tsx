@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { Confetti } from '../components/Confetti';
+import { CoverCropper } from '../components/CoverCropper';
 import { IconCheck, IconCopy, IconImage, IconPlus, IconShare } from '../components/Icons';
 import { PageHeader, Screen } from '../components/Shell';
 import { Button, TextField, useCopy } from '../components/ui';
@@ -23,9 +24,12 @@ export function CreateAlbum() {
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  // A pick isn't a cover yet: it goes to the cropper first, and only the
+  // framed result becomes the cover.
+  const [framing, setFraming] = useState<string | null>(null);
 
   const picker = useImagePicker(
-    (dataUrl) => setCoverSrc(dataUrl),
+    (dataUrl) => setFraming(dataUrl),
     (message) => toast(message, 'bad'),
   );
 
@@ -59,6 +63,16 @@ export function CreateAlbum() {
   return (
     <Screen accent={accent}>
       {picker.inputs}
+      {framing && (
+        <CoverCropper
+          src={framing}
+          onCancel={() => setFraming(null)}
+          onDone={(cropped) => {
+            setCoverSrc(cropped);
+            setFraming(null);
+          }}
+        />
+      )}
       <PageHeader title={<>Create<br />album</>} subtitle="Step 1 of 1" onBack={() => back({ name: 'home' })} />
 
       <div className="form">
