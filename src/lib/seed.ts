@@ -1,9 +1,16 @@
 /**
- * Demo world.
+ * The world a demo user starts with.
  *
- * Built once, on the first launch, right after the user tells us their name —
- * so the app opens with real history instead of an empty shell. Everything is
- * ordinary app data: it can be edited, added to or deleted like anything else.
+ * `newWorld` is what actually ships: you, and nothing else. An app that
+ * invents four albums and a cast of friends you have never met reads as
+ * broken, not as generous — the first thing it says about itself is that its
+ * contents aren't real.
+ *
+ * `buildSeedWorld` is the populated alternative, months of history across four
+ * albums. It is reachable on demand (`?sample=1`) and is what the smoke suite
+ * drives, since checking a calendar, a timeline and a streak needs something
+ * to have happened. Everything it builds is ordinary app data and can be
+ * edited or deleted like anything else.
  */
 
 import { dayKey, hashString, makeInviteCode, shiftDay, uid } from './util';
@@ -120,6 +127,33 @@ function postedAt(day: string, offsetMinutes: number): string {
   const base = new Date(y, m - 1, d, 8, 0, 0);
   base.setMinutes(base.getMinutes() + offsetMinutes);
   return base.toISOString();
+}
+
+/** You, and an empty shelf. What a new demo user gets. */
+export function newWorld(userName: string): AppData {
+  const data = emptyData();
+  const me: Person = {
+    id: uid('p'),
+    name: userName.trim() || 'You',
+    accent: 'pink',
+  };
+  data.people[me.id] = me;
+  data.currentUserId = me.id;
+  return data;
+}
+
+/*
+ * Read once, at load, and never again: the router rewrites the address bar
+ * with `replaceState` as soon as it resolves a route, and that drops the query
+ * string. By the time the name is submitted the flag is long gone from the URL.
+ */
+const SAMPLE_REQUESTED =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('sample');
+
+/** Whether this session asked for the populated sample world instead. */
+export function wantsSampleWorld(): boolean {
+  return SAMPLE_REQUESTED;
 }
 
 export function buildSeedWorld(userName: string): AppData {

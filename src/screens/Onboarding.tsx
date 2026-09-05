@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { CameraMark, IconPlus, IconUsers, Sparkle } from '../components/Icons';
 import { Button, TextField } from '../components/ui';
-import { buildSeedWorld } from '../lib/seed';
+import { buildSeedWorld, newWorld, wantsSampleWorld } from '../lib/seed';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 
@@ -36,8 +36,13 @@ export function Onboarding() {
       return;
     }
     setError(null);
-    // Building the world here means the next screen already has history in it.
-    dispatch({ type: 'signIn', name: trimmed, data: buildSeedWorld(trimmed) });
+    // An empty shelf, unless this session explicitly asked to see the app
+    // with history in it.
+    dispatch({
+      type: 'signIn',
+      name: trimmed,
+      data: wantsSampleWorld() ? buildSeedWorld(trimmed) : newWorld(trimmed),
+    });
     setStep('go');
   };
 

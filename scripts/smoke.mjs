@@ -49,9 +49,15 @@ const shot = async (page, name) => {
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 };
 
-/** Runs onboarding and lands on the home screen with the demo world seeded. */
-async function onboard(page, name = 'Yarin') {
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+/**
+ * Runs onboarding and lands on the home screen.
+ *
+ * `?sample=1` asks for the populated world. A real new user gets an empty one
+ * — checked separately below — but a calendar, a timeline and a streak need
+ * something to have happened before they can be checked at all.
+ */
+async function onboard(page, name = 'Yarin', { sample = true } = {}) {
+  await page.goto(sample ? `${BASE}/?sample=1` : BASE, { waitUntil: 'networkidle' });
   // The front door now offers a real account or the local demo; these checks
   // all exercise demo mode, which is the one that runs without a browser
   // able to complete Google's consent flow.
@@ -448,6 +454,36 @@ for (const [label, opts] of [
     'the day rolls over in an open tab',
     dayShownBefore !== null && dayShownAfter !== null && dayShownBefore !== dayShownAfter,
     `${dayShownBefore} → ${dayShownAfter}`,
+  );
+  await ctx.close();
+}
+
+/* ------------------------------------------------------------------ */
+/* 5b. A new user starts empty                                         */
+/* ------------------------------------------------------------------ */
+
+{
+  const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
+  const page = await ctx.newPage();
+  await onboard(page, 'Yarin', { sample: false });
+
+  const world = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('opd.data.v1')),
+  );
+  check(
+    'a new demo user gets no albums',
+    Object.keys(world.albums).length === 0,
+    `${Object.keys(world.albums).length} albums`,
+  );
+  check(
+    'a new demo user gets no invented friends',
+    Object.keys(world.people).length === 1,
+    `${Object.keys(world.people).length} people`,
+  );
+  check('…and no photos', Object.keys(world.photos).length === 0);
+  check(
+    '…but is themselves, by name',
+    world.people[world.currentUserId]?.name === 'Yarin',
   );
   await ctx.close();
 }

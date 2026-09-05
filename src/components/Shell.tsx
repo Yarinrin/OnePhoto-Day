@@ -1,6 +1,13 @@
 /** Page chrome: screen wrapper, header, bottom navigation, toasts. */
 
-import type { ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { useApp } from '../state/AppContext';
 import { useRouter, type Route } from '../state/router';
@@ -29,11 +36,59 @@ export function Screen({
   nav?: boolean;
   accent?: string;
 }) {
+  const setNav = useContext(NavCtx);
+
+  // Declared, not rendered. The nav itself lives outside the page (see
+  // NavHost); a screen only says whether it wants one and in which accent.
+  useLayoutEffect(() => {
+    setNav?.({ show: nav, accent });
+  }, [setNav, nav, accent]);
+
   return (
     <div className={`screen ${nav ? 'has-nav' : ''}`} data-accent={accent}>
       <div className="screen__scroll">{children}</div>
-      {nav && <BottomNav />}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Nav host                                                            */
+/* ------------------------------------------------------------------ */
+
+interface NavIntent {
+  show: boolean;
+  accent?: string;
+}
+
+const NavCtx = createContext<((intent: NavIntent) => void) | null>(null);
+
+/**
+ * Renders the bottom navigation *outside* the page that slides.
+ *
+ * It used to sit inside `Screen`, which meant it was part of the keyed page
+ * container — so every navigation unmounted and remounted it, replaying its
+ * entrance animation and dragging it along with the page's slide. A bar that
+ * re-introduces itself on every tap is not persistent chrome; it's a flicker.
+ *
+ * Which screen wants a nav can't be read off the route alone — Upload shows
+ * one while picking and hides it while confirming — so the screen declares it
+ * and the last mounted screen wins. Exactly one is ever mounted, so that is
+ * simply "the current screen".
+ */
+export function NavHost({ children }: { children: ReactNode }) {
+  const [intent, setIntent] = useState<NavIntent>({ show: false });
+  const value = useMemo(() => setIntent, []);
+  return (
+    <NavCtx.Provider value={value}>
+      {children}
+      {intent.show && (
+        // A plain wrapper: it carries the accent down to the bar, and stays
+        // put across navigations so the bar is never remounted.
+        <div data-accent={intent.accent}>
+          <BottomNav />
+        </div>
+      )}
+    </NavCtx.Provider>
   );
 }
 

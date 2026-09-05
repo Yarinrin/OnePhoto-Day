@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { CameraMark } from './components/Icons';
-import { Toasts } from './components/Shell';
+import { NavHost, Toasts } from './components/Shell';
 import type { Mode } from './lib/backend';
 import { useApp } from './state/AppContext';
 import { useRouter, type Route } from './state/router';
@@ -51,10 +51,12 @@ export function App() {
     <div className="desk">
       <DeskPanel />
       <div className="phone">
-        {/* Keying on the path restarts the entrance animation per screen. */}
-        <div className={`page page--${direction}`} key={mode ? pageKey(route) : 'welcome'}>
-          {mode === null ? <Welcome /> : render(route, signedIn, mode)}
-        </div>
+        <NavHost>
+          {/* Keying on the path restarts the entrance animation per screen. */}
+          <div className={`page page--${direction}`} key={mode ? pageKey(route) : 'welcome'}>
+            {mode === null ? <Welcome /> : render(route, signedIn, mode)}
+          </div>
+        </NavHost>
         <Toasts />
       </div>
     </div>

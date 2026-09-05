@@ -41,15 +41,57 @@ export async function closeExternal(): Promise<void> {
   }
 }
 
+/* ---- Deep links ------------------------------------------------------ */
+
+/*
+ * Deep links are captured from the moment this module loads, not from the
+ * moment React is ready for them, because sign-in has two ways to lose one:
+ *
+ *  - Android often destroys the activity while the Chrome tab is in front. The
+ *    link then arrives as a *cold start*, and the bridge fires `appUrlOpen`
+ *    while the app is still booting — before any component has mounted.
+ *    `getLaunchUrl()` is how you recover the intent that started the app.
+ *  - `addListener` is asynchronous: it returns a promise for the handle, so
+ *    even a warm resume has a window where the native side has no listener.
+ *
+ * Either way the URL carries the one-time code that completes sign-in. Miss it
+ * and the app sits on the login screen having apparently done nothing — so
+ * anything that arrives before a handler exists waits in `pending` instead.
+ */
+
+const pending: string[] = [];
+const seen = new Set<string>();
+let sink: ((url: string) => void) | null = null;
+
+function deliver(url: string): void {
+  // The launch intent and the live listener can both report the same URL on a
+  // cold start. Handling it twice would spend the code, then fail on the
+  // replay and show the user an error for something that worked.
+  if (seen.has(url)) return;
+  seen.add(url);
+  if (sink) sink(url);
+  else pending.push(url);
+}
+
+if (isNative) {
+  void App.addListener('appUrlOpen', ({ url }) => deliver(url));
+  void App.getLaunchUrl()
+    .then((result) => {
+      if (result?.url) deliver(result.url);
+    })
+    .catch(() => {});
+}
+
 /**
- * Calls back with every deep link the app is opened by. Returns an unsubscribe.
- * Resolves to a no-op on the web.
+ * Registers the handler for deep links, replaying any that arrived before it
+ * existed. Returns an unsubscribe. A no-op on the web.
  */
 export function onDeepLink(handler: (url: string) => void): () => void {
   if (!isNative) return () => {};
-  const listener = App.addListener('appUrlOpen', ({ url }) => handler(url));
+  sink = handler;
+  for (const url of pending.splice(0)) handler(url);
   return () => {
-    void listener.then((l) => l.remove());
+    if (sink === handler) sink = null;
   };
 }
 

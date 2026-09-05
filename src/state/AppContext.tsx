@@ -91,6 +91,28 @@ const Ctx = createContext<AppValue | null>(null);
 
 const MODE_KEY = 'opd.mode';
 
+/**
+ * The signed-in user, known from the session alone — no request required.
+ *
+ * Google gives a display name; the part of an email before the @ is a decent
+ * last resort. The profile row in the database will overwrite all of this the
+ * moment it loads.
+ */
+function identityFrom(session: Session): AppData {
+  const meta = (session.user.user_metadata ?? {}) as Record<string, unknown>;
+  const named = [meta.full_name, meta.name, session.user.email?.split('@')[0]].find(
+    (v): v is string => typeof v === 'string' && v.trim() !== '',
+  );
+  const data = emptyData();
+  data.currentUserId = session.user.id;
+  data.people[session.user.id] = {
+    id: session.user.id,
+    name: named ?? 'You',
+    accent: 'pink',
+  };
+  return data;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [data, dispatch] = useReducer(reducer, null, emptyData);
   const [ready, setReady] = useState(false);
@@ -182,9 +204,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     backendRef.current = backend;
     setMode('live');
     localStorage.setItem(MODE_KEY, 'live');
+
+    // Who you are comes from the session, and it is established *before* any
+    // request goes out. The app treats "no current user" as "not signed in",
+    // so hydrating identity only from a successful fetch meant one failed
+    // request — a flaky connection, a cold project — dropped the user back on
+    // the sign-in screen, having apparently done nothing. The account is the
+    // identity here; the network only supplies the albums.
+    dispatch({ type: 'hydrate', data: identityFrom(next) });
+
     try {
       dispatch({ type: 'hydrate', data: await backend.load() });
     } catch (err) {
+      // Signed in, just empty-handed. Returning to the app retries: live mode
+      // refreshes on focus and on resume.
       toast(err instanceof Error ? err.message : "Couldn't load your albums", 'bad');
     }
     setReady(true);
