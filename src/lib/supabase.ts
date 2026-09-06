@@ -20,6 +20,14 @@ export const supabase: SupabaseClient | null = supabaseConfigured
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        // Explicit, because the default is `implicit` — which hands the
+        // session back in the URL *fragment*. A fragment survives a browser
+        // redirect but is invisible to a deep-link handler reading query
+        // parameters, so sign-in came back to the app carrying a session
+        // nothing was looking for and silently did nothing at all.
+        // PKCE returns `?code=` instead, and is the right flow for a public
+        // client regardless: the secret never leaves the device.
+        flowType: 'pkce',
         // On the web the OAuth redirect lands back on our own page carrying
         // the code, so let the client pick it up. In the Android app there is
         // no such navigation — the code arrives as a deep link and is

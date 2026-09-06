@@ -5,8 +5,8 @@
 
 import { useState } from 'react';
 
-import { CameraMark, IconUsers } from '../components/Icons';
-import { Button, TextField } from '../components/ui';
+import { CameraMark, IconBack, IconUsers } from '../components/Icons';
+import { Button, IconButton, TextField } from '../components/ui';
 import { supabaseConfigured, useApp } from '../state/AppContext';
 
 export function Welcome() {
@@ -118,6 +118,11 @@ function EmailForm({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="ob">
+      <div className="ob__back">
+        <IconButton label="Back to the start" onClick={onBack}>
+          <IconBack size={21} />
+        </IconButton>
+      </div>
       <div className="ob__body">
         <div className="ob__step">
           <div>
@@ -187,9 +192,6 @@ function EmailForm({ onBack }: { onBack: () => void }) {
           }}
         >
           {joining ? 'I already have an account' : 'I need an account'}
-        </Button>
-        <Button variant="ghost" block onClick={onBack}>
-          Back
         </Button>
       </div>
     </div>

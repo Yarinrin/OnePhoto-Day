@@ -75,13 +75,27 @@ const NavCtx = createContext<((intent: NavIntent) => void) | null>(null);
  * and the last mounted screen wins. Exactly one is ever mounted, so that is
  * simply "the current screen".
  */
-export function NavHost({ children }: { children: ReactNode }) {
+export function NavHost({
+  enabled,
+  children,
+}: {
+  /**
+   * Whether the app shell is on screen at all. The front door and onboarding
+   * are not built from `Screen`, so nothing there ever declares an intent —
+   * and because the last declaration wins and is never cleared, the bar from
+   * the previous session stayed on screen over the sign-in page. This is the
+   * gate that says "no shell, no chrome", and it does not depend on every
+   * future screen remembering to opt out.
+   */
+  enabled: boolean;
+  children: ReactNode;
+}) {
   const [intent, setIntent] = useState<NavIntent>({ show: false });
   const value = useMemo(() => setIntent, []);
   return (
     <NavCtx.Provider value={value}>
       {children}
-      {intent.show && (
+      {enabled && intent.show && (
         // A plain wrapper: it carries the accent down to the bar, and stays
         // put across navigations so the bar is never remounted.
         <div data-accent={intent.accent}>

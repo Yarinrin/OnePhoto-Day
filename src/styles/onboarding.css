@@ -114,6 +114,13 @@
   animation: card-in var(--t-slow) var(--ease-out) 480ms both;
 }
 
+/* The way out of a sub-screen, where a back control belongs: top left. */
+.ob__back {
+  position: relative;
+  align-self: flex-start;
+  padding-bottom: var(--s4);
+}
+
 .ob__step {
   position: relative;
   display: flex;

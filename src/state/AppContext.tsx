@@ -34,6 +34,7 @@ import {
   onDeepLink,
   onResume,
   openExternal,
+  parseAuthRedirect,
 } from '../lib/native';
 import { collectOrphanedImages, dataStore } from '../lib/store';
 import { supabase, supabaseConfigured } from '../lib/supabase';
@@ -510,8 +511,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         options: { data: { full_name: name.trim() } },
       });
       if (error) return error.message;
-      // No session on a fresh sign-up means the project wants the address
-      // confirmed first. Say so plainly rather than appearing to hang.
+
+      // Supabase will not admit that an address is already registered — that
+      // would let anyone test which emails have accounts — so it returns a
+      // success with no identities attached and sends nothing. Left alone,
+      // that reads as "check your email for a link that never arrives".
+      if (created.user && created.user.identities?.length === 0) {
+        return 'That email already has an account. Sign in instead — and if you first used Google, use Google.';
+      }
+
+      // No session on a genuinely new sign-up means the project wants the
+      // address confirmed first. Say so plainly rather than appearing to hang.
       if (!created.session) {
         return `Check ${email.trim()} for a confirmation link, then sign in.`;
       }
@@ -527,29 +537,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const sb = supabase;
 
     return onDeepLink((url) => {
-      // PKCE hands back `?code=…`; an error comes back as `?error=…`. Anything
-      // else on our scheme isn't ours to act on.
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        return;
-      }
-      const code = parsed.searchParams.get('code');
-      const failed = parsed.searchParams.get('error_description') ?? parsed.searchParams.get('error');
+      const result = parseAuthRedirect(url);
 
-      if (failed) {
+      if (result.error) {
         void closeExternal();
-        toast(failed, 'bad');
+        toast(result.error, 'bad');
         return;
       }
-      if (!code) return;
+      if (!result.code && !result.accessToken) return; // not a sign-in link
 
       void (async () => {
-        const { error } = await sb.auth.exchangeCodeForSession(code);
+        // Either shape ends the same way: a session, which fires SIGNED_IN
+        // and boots live mode. Nothing more to do here on success.
+        const { error } = result.code
+          ? await sb.auth.exchangeCodeForSession(result.code)
+          : await sb.auth.setSession({
+              access_token: result.accessToken!,
+              refresh_token: result.refreshToken ?? '',
+            });
         await closeExternal();
-        // Success needs no handling here: exchanging the code fires
-        // SIGNED_IN, and the session listener above boots live mode.
         if (error) toast(error.message, 'bad');
       })();
     });

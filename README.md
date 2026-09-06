@@ -233,9 +233,18 @@ Chrome tab and be handed back through a custom-scheme deep link.
 
 Sign-up needs one setting to match: with **Confirm email** on (Supabase's
 default), a new account has no session until its address is verified, and that
-verification link has the same round trip to make. The app says so rather than
-appearing to hang, but for the app to sign people up on the spot, turn it off
-under Authentication → Sign In / Providers → Email.
+verification link has the same round trip to make — over Supabase's built-in
+SMTP, which is rate-limited to a handful of messages an hour. The app says so
+rather than appearing to hang, but for the app to sign people up on the spot,
+turn it off under Authentication → Sign In / Providers → Email.
+
+Signing up with an address that already has an account is its own trap:
+Supabase deliberately will not admit the address is taken — that would let
+anyone probe which emails have accounts — so it returns a success with no
+identities attached and sends nothing at all. Left unhandled that reads as
+"check your email for a link that never arrives", which is exactly what it
+looked like. The app now recognises the empty-identities response and says the
+account already exists.
 
 `lib/backend.ts` holds both behind one interface. Screens never touch either —
 they call `commands` on the app context, which forwards to whichever backend
@@ -287,6 +296,14 @@ with it. It is not a Play Store key and must not become one.
 
 **What the shell adds** beyond hosting the pages:
 
+- **The flow type.** `supabase-js` defaults to `flowType: 'implicit'`, which
+  returns the session in the URL *fragment* (`#access_token=…`). A fragment
+  survives a browser redirect but is invisible to a deep-link handler reading
+  query parameters — so sign-in completed at Google, completed at Supabase,
+  created the account, came back to the app, and did nothing whatsoever,
+  because nothing was looking where the session actually was. The client now
+  asks for `pkce` explicitly, which returns `?code=` and is the right flow for
+  a public client anyway. `parseAuthRedirect` reads both halves regardless.
 - **Sign-in**, which can't work the web way. Google refuses to render its
   consent screen inside an embedded WebView, so the app hands the URL to a real
   Chrome tab and gets the result back as a deep link on

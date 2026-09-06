@@ -82,6 +82,46 @@ if (isNative) {
     .catch(() => {});
 }
 
+export interface AuthRedirect {
+  code?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  error?: string;
+}
+
+/**
+ * Pulls the result of a sign-in out of the URL the app was opened with.
+ *
+ * Both halves of the URL have to be read. PKCE puts its one-time code in the
+ * query (`?code=`), the implicit flow puts the tokens in the fragment
+ * (`#access_token=`), and an error can arrive in either. Reading only the
+ * query is what made sign-in fail with no symptom at all: the session came
+ * back in the fragment, nothing was looking there, and the app sat on the
+ * login screen having apparently done nothing.
+ *
+ * Returns an empty object for any link that isn't a sign-in result.
+ */
+export function parseAuthRedirect(url: string): AuthRedirect {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return {};
+  }
+  const query = parsed.searchParams;
+  const fragment = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+  const param = (key: string) => query.get(key) ?? fragment.get(key) ?? undefined;
+
+  const error = param('error_description') ?? param('error');
+  if (error) return { error };
+
+  const code = param('code');
+  const accessToken = param('access_token');
+  if (!code && !accessToken) return {};
+
+  return { code, accessToken, refreshToken: param('refresh_token') };
+}
+
 /**
  * Registers the handler for deep links, replaying any that arrived before it
  * existed. Returns an unsubscribe. A no-op on the web.

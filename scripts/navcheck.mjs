@@ -137,9 +137,78 @@ check(
   ((await p2.locator('.field__error').first().textContent()) ?? '').includes('six'),
 );
 
-await p2.getByRole('button', { name: /^Back$/ }).click();
+await p2.getByRole('button', { name: /Back to the start/ }).click();
 await p2.waitForTimeout(400);
-check('back returns to the front door', (await p2.getByRole('button', { name: /Try the demo/ }).count()) === 1);
+check('the back arrow returns to the front door', (await p2.getByRole('button', { name: /Try the demo/ }).count()) === 1);
+
+/* ---- The nav must not leak onto screens that have no shell ---- */
+
+{
+  // Reaching the front door with a nav already declared is the case that
+  // broke: the bar from the previous session stayed on the sign-in page.
+  const ctx3 = await browser.newContext({ viewport: { width: 402, height: 874 } });
+  const p3 = await ctx3.newPage();
+  await p3.goto(`${BASE}/?sample=1`, { waitUntil: 'networkidle' });
+  check('no nav on the front door', (await p3.locator('.nav').count()) === 0);
+
+  await p3.getByRole('button', { name: /Try the demo/ }).click();
+  await p3.waitForTimeout(500);
+  check('no nav during onboarding', (await p3.locator('.nav').count()) === 0);
+
+  await p3.getByRole('button', { name: 'Start' }).click();
+  await p3.locator('.field__input').first().fill('Tom');
+  await p3.getByRole('button', { name: 'Continue' }).click();
+  await p3.waitForTimeout(400);
+  await p3.getByRole('button', { name: /Skip for now/ }).click();
+  await p3.waitForTimeout(800);
+  check('the nav appears once inside', (await p3.locator('.nav').count()) === 1);
+
+  // Start over: back to the front door, and the bar must go with it.
+  await p3.goto(`${BASE}/profile`, { waitUntil: 'networkidle' });
+  await p3.waitForTimeout(500);
+  await p3.getByRole('button', { name: /Start over/ }).click();
+  await p3.waitForTimeout(400);
+  await p3.getByRole('button', { name: 'Clear everything', exact: true }).click();
+  await p3.waitForTimeout(1000);
+  check(
+    'starting over returns to the front door',
+    (await p3.getByRole('button', { name: /Try the demo/ }).count()) === 1,
+  );
+  check('…and takes the nav with it', (await p3.locator('.nav').count()) === 0);
+  await ctx3.close();
+}
+
+/* ---- Reading a sign-in result out of a deep link ---- */
+
+{
+  const ctx4 = await browser.newContext();
+  const p4 = await ctx4.newPage();
+  await p4.goto(BASE, { waitUntil: 'networkidle' });
+  const r = await p4.evaluate(async () => {
+    const { parseAuthRedirect } = await import('/src/lib/native.ts');
+    const S = 'com.yarinrin.onephotoday://auth';
+    return {
+      pkce: parseAuthRedirect(`${S}?code=abc123`),
+      // The shape that used to be dropped on the floor.
+      implicit: parseAuthRedirect(`${S}#access_token=tok&refresh_token=ref&token_type=bearer`),
+      errQuery: parseAuthRedirect(`${S}?error=access_denied`),
+      errFragment: parseAuthRedirect(`${S}#error_description=User%20said%20no`),
+      plain: parseAuthRedirect(S),
+      junk: parseAuthRedirect('not a url at all'),
+    };
+  });
+  check('a PKCE link yields its code', r.pkce.code === 'abc123');
+  check(
+    'an implicit link yields its tokens',
+    r.implicit.accessToken === 'tok' && r.implicit.refreshToken === 'ref',
+    JSON.stringify(r.implicit),
+  );
+  check('an error in the query is read', r.errQuery.error === 'access_denied');
+  check('an error in the fragment is read', r.errFragment.error === 'User said no');
+  check('a bare link is not a sign-in', !r.plain.code && !r.plain.accessToken && !r.plain.error);
+  check('unparseable input is survived', Object.keys(r.junk).length === 0);
+  await ctx4.close();
+}
 
 check('no console or page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 

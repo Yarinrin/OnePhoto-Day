@@ -51,7 +51,7 @@ export function App() {
     <div className="desk">
       <DeskPanel />
       <div className="phone">
-        <NavHost>
+        <NavHost enabled={mode !== null && signedIn}>
           {/* Keying on the path restarts the entrance animation per screen. */}
           <div className={`page page--${direction}`} key={mode ? pageKey(route) : 'welcome'}>
             {mode === null ? <Welcome /> : render(route, signedIn, mode)}
