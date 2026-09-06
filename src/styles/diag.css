@@ -1,0 +1,104 @@
+/* ============================================================
+   Diagnostics — deliberately plain; this is a readout, not a screen
+   ============================================================ */
+
+.diag {
+  position: absolute;
+  inset: 0;
+  z-index: 98;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s4);
+  background: rgba(17, 17, 17, 0.68);
+}
+
+.diag__sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  width: 100%;
+  max-width: 420px;
+  max-height: 88%;
+  padding: var(--s5);
+  border: var(--border-thick);
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  box-shadow: var(--pop-lg);
+}
+
+.diag__title {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.diag__facts {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+.diag__log {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s3);
+  border: var(--border);
+  border-radius: var(--r-sm);
+  background: var(--paper-sunk);
+}
+
+.diag__empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.diag__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(17, 17, 17, 0.09);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.diag__row:last-child {
+  border-bottom: 0;
+}
+.diag__time {
+  color: var(--ink-faint);
+}
+.diag__event {
+  font-weight: 700;
+}
+.diag__detail {
+  flex: 1 1 100%;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.diag__actions {
+  display: flex;
+  gap: var(--s3);
+}
+.diag__actions .btn {
+  flex: 1;
+}
+
+/* The way in: a footnote, not a feature. */
+.diag__open {
+  align-self: center;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-decoration: underline;
+  cursor: pointer;
+}

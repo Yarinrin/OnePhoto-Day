@@ -36,6 +36,7 @@ import {
   openExternal,
   parseAuthRedirect,
 } from '../lib/native';
+import { logEvent, redact } from '../lib/diag';
 import { collectOrphanedImages, dataStore } from '../lib/store';
 import { supabase, supabaseConfigured } from '../lib/supabase';
 import { emptyData, type AccentKey, type AppData } from '../lib/types';
@@ -148,6 +149,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* ---- Session ---- */
 
   useEffect(() => {
+    // The first thing worth knowing about any install: what it thinks it is.
+    logEvent(
+      'boot',
+      `native=${isNative} supabase=${supabaseConfigured} mode=${localStorage.getItem(MODE_KEY) ?? 'none'} ua=${navigator.userAgent.slice(0, 80)}`,
+    );
+
     if (!supabase) {
       // No project configured: demo is the only thing on offer.
       void bootDemo();
@@ -158,6 +165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data: { session: found } }) => {
       if (!alive) return;
+      logEvent('session.restore', found ? 'found' : 'none');
       if (found) {
         void bootLive(found);
       } else if (localStorage.getItem(MODE_KEY) === 'demo') {
@@ -169,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       if (!alive) return;
+      logEvent('auth.state', event);
       if (event === 'SIGNED_IN' && next) void bootLive(next);
       if (event === 'SIGNED_OUT') {
         backendRef.current = null;
@@ -219,7 +228,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       dispatch({ type: 'hydrate', data: await backend.load() });
+      logEvent('live.loaded', `user=${next.user.id.slice(0, 8)}`);
     } catch (err) {
+      logEvent('live.load.failed', err instanceof Error ? err.message : String(err));
       // Signed in, just empty-handed. Returning to the app retries: live mode
       // refreshes on focus and on resume.
       toast(err instanceof Error ? err.message : "Couldn't load your albums", 'bad');
@@ -471,15 +482,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // inside an embedded WebView. Ask Supabase for the URL but don't follow it
     // (`skipBrowserRedirect`), hand it to a real Chrome tab, and wait for the
     // deep link to come back — picked up by the listener below.
+    logEvent('google.start', `redirect=${NATIVE_REDIRECT}`);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: NATIVE_REDIRECT, skipBrowserRedirect: true },
     });
     if (error || !data?.url) {
+      logEvent('google.start.failed', error?.message ?? 'no url returned');
       toast(error?.message ?? 'Could not start sign-in.', 'bad');
       return;
     }
-    await openExternal(data.url);
+    logEvent('google.opening', new URL(data.url).host);
+    try {
+      await openExternal(data.url);
+      logEvent('google.opened');
+    } catch (err) {
+      logEvent('google.open.failed', err instanceof Error ? err.message : String(err));
+      toast('Could not open the browser for sign-in.', 'bad');
+    }
   }, [toast]);
 
   /*
@@ -497,7 +517,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       email: email.trim(),
       password,
     });
-    // Success needs nothing here: it fires SIGNED_IN, which boots live mode.
+    logEvent('email.signin', error ? `failed: ${error.message}` : 'ok');
+    // Success needs nothing else here: it fires SIGNED_IN, which boots live.
     return error ? error.message : null;
   }, []);
 
@@ -510,22 +531,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // The database trigger reads full_name when it creates the profile.
         options: { data: { full_name: name.trim() } },
       });
-      if (error) return error.message;
+      if (error) {
+        logEvent('email.signup.failed', error.message);
+        return error.message;
+      }
 
       // Supabase will not admit that an address is already registered — that
       // would let anyone test which emails have accounts — so it returns a
       // success with no identities attached and sends nothing. Left alone,
       // that reads as "check your email for a link that never arrives".
       if (created.user && created.user.identities?.length === 0) {
+        logEvent('email.signup.exists');
         return 'That email already has an account. Sign in instead — and if you first used Google, use Google.';
       }
 
-      // No session on a genuinely new sign-up means the project wants the
-      // address confirmed first. Say so plainly rather than appearing to hang.
-      if (!created.session) {
-        return `Check ${email.trim()} for a confirmation link, then sign in.`;
+      if (created.session) {
+        logEvent('email.signup', 'ok with session');
+        return null;
       }
-      return null;
+
+      /*
+       * No session means the project is configured to want the address
+       * confirmed. It gets confirmed anyway: a database trigger stamps every
+       * new user as confirmed on insert, because Supabase's built-in mailer is
+       * rate-limited to a few messages an hour and routinely delivers none at
+       * all — which is exactly how sign-up came to sit forever on "check your
+       * email". The account is real and usable the moment it exists, so sign
+       * straight in rather than sending the user to an inbox for nothing.
+       */
+      logEvent('email.signup', 'no session, signing in');
+      const { error: followUp } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (!followUp) {
+        logEvent('email.signup.signedin');
+        return null;
+      }
+      logEvent('email.signup.signin.failed', followUp.message);
+      return `Account created, but signing in failed: ${followUp.message}`;
     },
     [],
   );
@@ -536,8 +580,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!isNative || !supabase) return;
     const sb = supabase;
 
+    logEvent('deeplink.listening');
     return onDeepLink((url) => {
       const result = parseAuthRedirect(url);
+      // The URL itself is never recorded: it carries the one-time code.
+      logEvent(
+        'deeplink',
+        `scheme=${url.split(':')[0]} code=${redact(result.code)} token=${redact(result.accessToken)} error=${result.error ?? 'none'}`,
+      );
 
       if (result.error) {
         void closeExternal();
@@ -556,6 +606,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               refresh_token: result.refreshToken ?? '',
             });
         await closeExternal();
+        logEvent('deeplink.exchange', error ? `failed: ${error.message}` : 'ok');
         if (error) toast(error.message, 'bad');
       })();
     });

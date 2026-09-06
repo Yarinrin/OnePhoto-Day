@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 
+import { Diagnostics } from '../components/Diagnostics';
 import { CameraMark, IconBack, IconUsers } from '../components/Icons';
 import { Button, IconButton, TextField } from '../components/ui';
 import { supabaseConfigured, useApp } from '../state/AppContext';
@@ -13,6 +14,7 @@ export function Welcome() {
   const { signInWithGoogle, startDemo } = useApp();
   const [signingIn, setSigningIn] = useState(false);
   const [email, setEmail] = useState(false);
+  const [diag, setDiag] = useState(false);
 
   if (email) return <EmailForm onBack={() => setEmail(false)} />;
 
@@ -70,7 +72,15 @@ export function Welcome() {
             ? 'Sign in to share albums · Demo stays on this device'
             : 'No account configured — demo only'}
         </p>
+
+        {/* Small on purpose. It matters when something is wrong and should be
+            invisible the rest of the time. */}
+        <button type="button" className="diag__open" onClick={() => setDiag(true)}>
+          Diagnostics
+        </button>
       </div>
+
+      {diag && <Diagnostics onClose={() => setDiag(false)} />}
     </div>
   );
 }

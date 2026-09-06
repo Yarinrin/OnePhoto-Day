@@ -20,6 +20,12 @@ const shotArg = process.argv.find((a) => a.startsWith('--shots='));
 const SHOTS = shotArg ? shotArg.slice('--shots='.length) : null;
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
+// The diagnostics trail is pushed to Supabase best-effort. This sandbox
+// blocks that host by egress policy, so the browser logs a tunnel failure
+// that says nothing about the app. Anything else still counts.
+const environmental = (m) =>
+  /ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|Failed to fetch/.test(m);
+
 const results = [];
 const failures = [];
 
@@ -91,8 +97,10 @@ const myPhotosToday = (page, albumName) =>
   const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
   const page = await ctx.newPage();
   const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => !environmental(e.message) && errors.push(e.message));
+  page.on('console', (m) => {
+  if (m.type() === 'error' && !environmental(m.text())) errors.push(m.text());
+});
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await shot(page, '01-welcome');

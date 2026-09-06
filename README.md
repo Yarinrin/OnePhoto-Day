@@ -231,12 +231,18 @@ sign-in is the alternative, and it is the one with somewhere to go wrong —
 Google refuses consent inside an embedded WebView, so it has to leave for a
 Chrome tab and be handed back through a custom-scheme deep link.
 
-Sign-up needs one setting to match: with **Confirm email** on (Supabase's
-default), a new account has no session until its address is verified, and that
-verification link has the same round trip to make — over Supabase's built-in
-SMTP, which is rate-limited to a handful of messages an hour. The app says so
-rather than appearing to hang, but for the app to sign people up on the spot,
-turn it off under Authentication → Sign In / Providers → Email.
+**Sign-up needs no dashboard setting.** With Supabase's default "Confirm
+email" on, a new account has no session until a link arrives — over a built-in
+mailer rate-limited to a handful of messages an hour that routinely delivers
+none at all. Waiting on that is how sign-up came to sit forever on "check your
+email". A `before insert` trigger on `auth.users` stamps every new account as
+confirmed, so the account is usable the moment it exists, and the app signs
+straight in after creating one instead of sending anyone to an inbox. The
+address is never mailed and never has to be real.
+
+Both halves are proven against the live project: inserting a user exactly the
+way GoTrue does, inside a transaction that then rolls back, comes out with
+`email_confirmed_at` set and a matching profile row.
 
 Signing up with an address that already has an account is its own trap:
 Supabase deliberately will not admit the address is taken — that would let
@@ -344,6 +350,27 @@ Icons and the launch screen come from `npm run icons`, which renders one drawing
 — the camera mark — to every size the browser, the manifest, and five Android
 density buckets ask for. It exists because the web icons and the phone icons
 were briefly two drawings of the same thing that had drifted apart.
+
+## Telling what happened on the phone
+
+Everything downstream of the compiler was, for a long time, unverifiable:
+`dl.google.com` is blocked here so the APK could only be built by CI, and
+`*.supabase.co` is blocked by egress policy so nothing here can reach the
+backend over HTTP either. That left every Android failure to be diagnosed by
+reading code rather than by watching it run — and the diagnoses were wrong
+repeatedly. A dead nav bar had a cause invisible to a browser; sign-in failed
+silently because the session came back in a URL fragment nothing was reading.
+
+So the app now records its own trace: boot (whether it believes it is native,
+whether an account is configured, what the mode was), each sign-in step, each
+deep link, and the outcome of every exchange. It goes two places — a
+write-only `debug_events` table, readable only over SQL, and `localStorage`,
+shown by a **Diagnostics** link on the front door so it works with no
+connection at all.
+
+Nothing secret is ever recorded. One-time codes and access tokens are reduced
+to `present(<length>)` before they are written, and the suite asserts that no
+token-shaped string can reach the trail.
 
 ## Known limits
 
