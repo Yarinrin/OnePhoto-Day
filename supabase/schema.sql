@@ -39,6 +39,9 @@ create table if not exists public.albums (
   invite_code  text not null unique,
   owner_id     uuid not null references public.profiles on delete cascade,
   cover_url    text,
+  -- A ~360px copy of the cover, for the album cards on the home screen. Null
+  -- for albums whose cover predates thumbnails; the full size is used then.
+  cover_thumb_url text,
   created_at   timestamptz not null default now()
 );
 
@@ -60,6 +63,9 @@ create table if not exists public.photos (
   posted_at   timestamptz not null default now(),
   caption     text,
   image_path  text not null,
+  -- A ~512px copy, which is what every grid tile actually draws. Null for
+  -- photos posted before thumbnails existed; those fall back to image_path.
+  thumb_path  text,
 
   -- ⭐ THE RULE. One photo per person, per album, per day.
   -- The database itself refuses a second row. No app, no script and no

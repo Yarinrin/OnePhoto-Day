@@ -1,6 +1,7 @@
 /** Derived reads over AppData. Pure, memo-friendly, no React. */
 
-import type { AppData, Album, Person, Photo } from '../lib/types';
+import { thumbIdFor } from '../lib/store';
+import type { AppData, Album, ImageRef, Person, Photo } from '../lib/types';
 import { dayKey, shiftDay } from '../lib/util';
 
 /**
@@ -11,14 +12,22 @@ import { dayKey, shiftDay } from '../lib/util';
  */
 export function referencedImageIds(data: AppData): Set<string> {
   const ids = new Set<string>();
-  for (const photo of Object.values(data.photos)) {
-    if (photo.image.kind === 'stored') ids.add(photo.image.id);
-  }
-  for (const album of Object.values(data.albums)) {
-    if (album.cover?.kind === 'stored') ids.add(album.cover.id);
-  }
+  const keep = (ref: ImageRef | undefined) => {
+    if (ref?.kind !== 'stored') return;
+    ids.add(ref.id);
+    // A small copy is a separate file in the store and would otherwise look
+    // exactly like an orphan on the next launch.
+    if (ref.thumbId) ids.add(ref.thumbId);
+  };
+  for (const photo of Object.values(data.photos)) keep(photo.image);
+  for (const album of Object.values(data.albums)) keep(album.cover);
   for (const person of Object.values(data.people)) {
-    if (person.avatarImageId) ids.add(person.avatarImageId);
+    // An avatar is held as a bare id rather than a ref, so its companion is
+    // named by the same rule that saved it.
+    if (person.avatarImageId) {
+      ids.add(person.avatarImageId);
+      ids.add(thumbIdFor(person.avatarImageId));
+    }
   }
   return ids;
 }

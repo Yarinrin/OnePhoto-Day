@@ -36,8 +36,8 @@ export function Profile() {
   );
 
   const picker = useImagePicker(
-    async (dataUrl) => {
-      await commands.setAvatar({ dataUrl });
+    async (image) => {
+      await commands.setAvatar(image);
       toast('Profile photo updated', 'ok');
     },
     (message) => toast(message, 'bad'),

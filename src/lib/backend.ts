@@ -11,24 +11,30 @@
  */
 
 import { PHOTO_BUCKET, requireSupabase } from './supabase';
-import { dataStore, imageStore, ImageWriteError } from './store';
+import { dataStore, imageStore, ImageWriteError, thumbIdFor } from './store';
 import {
   emptyData,
   type AccentKey,
   type Album,
   type AppData,
   type ImageRef,
+  type ImageSize,
   type Person,
   type Photo,
 } from './types';
-import { dayKey, makeInviteCode, normalizeCode, uid } from './util';
+import {
+  dayKey,
+  makeInviteCode,
+  normalizeCode,
+  uid,
+  type EncodedImage,
+} from './util';
 
 export type Mode = 'demo' | 'live';
 
 /** A picked image on its way to storage. */
-export interface PickedImage {
-  dataUrl: string;
-}
+/** A picked photo, already downscaled and encoded at both sizes. */
+export type PickedImage = EncodedImage;
 
 export interface Backend {
   readonly mode: Mode;
@@ -51,7 +57,7 @@ export interface Backend {
   setAvatar(image: PickedImage | null): Promise<void>;
 
   /** Resolve an image reference to something an <img> can display. */
-  resolveImage(ref: ImageRef): Promise<string | null>;
+  resolveImage(ref: ImageRef, size: ImageSize): Promise<string | null>;
 }
 
 /* ================================================================== */
@@ -91,8 +97,13 @@ export class DemoBackend implements Backend {
 
   async storeImage(image: PickedImage): Promise<{ ref: ImageRef; durable: boolean }> {
     const id = uid('img');
+    const thumbId = thumbIdFor(id);
     const durable = await imageStore.put(id, image.dataUrl);
-    return { ref: { kind: 'stored', id }, durable };
+    // The small copy is a nicety, not the photo. If there is no room for it
+    // the full size still displays everywhere; failing the whole upload over
+    // a thumbnail would lose the picture to save a preview of it.
+    await imageStore.put(thumbId, image.thumbDataUrl).catch(() => false);
+    return { ref: { kind: 'stored', id, thumbId }, durable };
   }
 
   /* The mutations below are handled by the reducer in demo mode — the context
@@ -115,9 +126,13 @@ export class DemoBackend implements Backend {
   async renameUser(): Promise<void> {}
   async setAvatar(): Promise<void> {}
 
-  async resolveImage(ref: ImageRef): Promise<string | null> {
-    if (ref.kind === 'stored') return imageStore.get(ref.id);
-    return null; // generated scenes resolve synchronously elsewhere
+  async resolveImage(ref: ImageRef, size: ImageSize): Promise<string | null> {
+    if (ref.kind !== 'stored') return null; // generated scenes resolve elsewhere
+    if (size === 'thumb' && ref.thumbId) {
+      const small = await imageStore.get(ref.thumbId);
+      if (small) return small;
+    }
+    return imageStore.get(ref.id);
   }
 }
 
@@ -138,6 +153,7 @@ interface DbAlbum {
   invite_code: string;
   owner_id: string;
   cover_url: string | null;
+  cover_thumb_url: string | null;
   created_at: string;
 }
 interface DbMember {
@@ -152,6 +168,7 @@ interface DbPhoto {
   posted_at: string;
   caption: string | null;
   image_path: string;
+  thumb_path: string | null;
 }
 
 const ACCENT_FALLBACK: AccentKey = 'yellow';
@@ -177,11 +194,13 @@ export class SupabaseBackend implements Backend {
     // to what this user is allowed to see.
     const [profiles, albums, members, photos] = await Promise.all([
       sb.from('profiles').select('id,name,accent,avatar_url'),
-      sb.from('albums').select('id,name,accent,invite_code,owner_id,cover_url,created_at'),
+      sb
+        .from('albums')
+        .select('id,name,accent,invite_code,owner_id,cover_url,cover_thumb_url,created_at'),
       sb.from('album_members').select('album_id,user_id'),
       sb
         .from('photos')
-        .select('id,album_id,author_id,day,posted_at,caption,image_path')
+        .select('id,album_id,author_id,day,posted_at,caption,image_path,thumb_path')
         .order('day', { ascending: false })
         .limit(2000),
     ]);
@@ -216,7 +235,10 @@ export class SupabaseBackend implements Backend {
         createdAt: a.created_at,
         memberIds: roster.get(a.id) ?? [],
       };
-      if (a.cover_url) album.cover = { kind: 'remote', path: a.cover_url };
+      if (a.cover_url) {
+        album.cover = { kind: 'remote', path: a.cover_url };
+        if (a.cover_thumb_url) album.cover.thumbPath = a.cover_thumb_url;
+      }
       data.albums[a.id] = album;
     }
 
@@ -227,7 +249,9 @@ export class SupabaseBackend implements Backend {
         authorId: ph.author_id,
         day: ph.day,
         postedAt: ph.posted_at,
-        image: { kind: 'remote', path: ph.image_path },
+        image: ph.thumb_path
+          ? { kind: 'remote', path: ph.image_path, thumbPath: ph.thumb_path }
+          : { kind: 'remote', path: ph.image_path },
       };
       if (ph.caption) photo.caption = ph.caption;
       data.photos[ph.id] = photo;
@@ -249,7 +273,11 @@ export class SupabaseBackend implements Backend {
    */
   private signed = new Map<string, { url: string; expires: number }>();
 
-  async resolveImage(ref: ImageRef): Promise<string | null> {
+  /** Paths waiting to be signed together on the next tick. */
+  private pending = new Map<string, ((url: string | null) => void)[]>();
+  private flushQueued = false;
+
+  async resolveImage(ref: ImageRef, size: ImageSize): Promise<string | null> {
     if (ref.kind !== 'remote') {
       // A live session can still hold demo-era local refs if the user switched
       // modes; fall back to the local store rather than showing a hole.
@@ -259,34 +287,135 @@ export class SupabaseBackend implements Backend {
     // Google avatars are already public URLs, not bucket objects.
     if (ref.path.startsWith('http')) return ref.path;
 
-    const hit = this.signed.get(ref.path);
+    // Photos posted before there were thumbnails have only the full size.
+    const path = size === 'thumb' && ref.thumbPath ? ref.thumbPath : ref.path;
+
+    const hit = this.signed.get(path);
     if (hit && hit.expires > Date.now()) return hit.url;
 
-    const sb = requireSupabase();
-    const { data, error } = await sb.storage
-      .from(PHOTO_BUCKET)
-      .createSignedUrl(ref.path, 3600);
-    if (error || !data) return null;
-
-    this.signed.set(ref.path, {
-      url: data.signedUrl,
-      // Re-sign a minute early so a URL never expires mid-render.
-      expires: Date.now() + 3540_000,
-    });
-    return data.signedUrl;
+    return this.signLater(path);
   }
 
-  private async upload(albumId: string, image: PickedImage): Promise<string> {
+  /*
+   * Signing is batched because it is a network request, and a grid asks for
+   * one per tile.
+   *
+   * Every <img> resolves its own source, so a screen of twenty photos used to
+   * make twenty round trips to Supabase before the first byte of the first
+   * photo was requested — the images were not slow to download so much as slow
+   * to be allowed to start. React runs all of a commit's effects in one task,
+   * so waiting a single turn of the event loop collects the whole screen into
+   * one `createSignedUrls` call.
+   */
+  private signLater(path: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const waiting = this.pending.get(path);
+      if (waiting) {
+        // Already queued by another tile this tick — share the one request.
+        waiting.push(resolve);
+      } else {
+        this.pending.set(path, [resolve]);
+      }
+      if (!this.flushQueued) {
+        this.flushQueued = true;
+        setTimeout(() => void this.flushSigning(), 0);
+      }
+    });
+  }
+
+  private async flushSigning(): Promise<void> {
+    this.flushQueued = false;
+    const batch = this.pending;
+    this.pending = new Map();
+    const paths = [...batch.keys()];
+    if (paths.length === 0) return;
+
+    const settle = (path: string, url: string | null) => {
+      for (const resolve of batch.get(path) ?? []) resolve(url);
+    };
+
+    // Anything that escapes leaves every tile in this batch waiting on a
+    // promise that will never settle — a skeleton that never resolves into
+    // either a photo or an error.
+    let sb;
+    try {
+      sb = requireSupabase();
+    } catch {
+      for (const path of paths) settle(path, null);
+      return;
+    }
+
+    // Chunked because the endpoint takes a list, not an unbounded one.
+    for (let i = 0; i < paths.length; i += 100) {
+      const chunk = paths.slice(i, i + 100);
+      try {
+        const { data, error } = await sb.storage
+          .from(PHOTO_BUCKET)
+          .createSignedUrls(chunk, 3600);
+        if (error || !data) {
+          for (const path of chunk) settle(path, null);
+          continue;
+        }
+        const seen = new Set<string>();
+        for (const row of data) {
+          // The API echoes the path back on each row; a row can carry its own
+          // error while its neighbours succeeded.
+          const path = row.path ?? '';
+          if (!path) continue;
+          seen.add(path);
+          if (row.error || !row.signedUrl) {
+            settle(path, null);
+            continue;
+          }
+          this.signed.set(path, {
+            url: row.signedUrl,
+            // Re-sign a minute early so a URL never expires mid-render.
+            expires: Date.now() + 3540_000,
+          });
+          settle(path, row.signedUrl);
+        }
+        // Anything the response didn't mention must still be answered, or the
+        // tile waiting on it hangs on a skeleton forever.
+        for (const path of chunk) if (!seen.has(path)) settle(path, null);
+      } catch {
+        for (const path of chunk) settle(path, null);
+      }
+    }
+  }
+
+  /**
+   * Puts a picture in the bucket at both sizes, in one folder so the album's
+   * row-level rules cover the pair without a second policy.
+   *
+   * The small copy is sent first and is allowed to fail: it is a preview, and
+   * losing the photograph because its preview would not upload is the wrong
+   * trade. A `null` thumb path simply means the full size is all there is.
+   */
+  private async upload(
+    folder: string,
+    prefix: string,
+    image: PickedImage,
+    upsert = false,
+  ): Promise<{ path: string; thumbPath: string | null }> {
     const sb = requireSupabase();
-    const path = `${albumId}/${uid('ph')}.jpg`;
+    const id = uid(prefix);
+    const path = `${folder}/${id}.${image.ext}`;
+    const thumbPath = `${folder}/${id}.t.${image.ext}`;
+    const contentType = image.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+    const thumb = await sb.storage
+      .from(PHOTO_BUCKET)
+      .upload(thumbPath, dataUrlToBlob(image.thumbDataUrl), { contentType, upsert })
+      .catch(() => ({ error: new Error('thumbnail upload failed') }));
+
     const { error } = await sb.storage
       .from(PHOTO_BUCKET)
-      .upload(path, dataUrlToBlob(image.dataUrl), {
-        contentType: 'image/jpeg',
-        upsert: false,
-      });
-    if (error) throw new ImageWriteError(`Upload failed: ${error.message}`, false);
-    return path;
+      .upload(path, dataUrlToBlob(image.dataUrl), { contentType, upsert });
+    if (error) {
+      if (!thumb.error) await sb.storage.from(PHOTO_BUCKET).remove([thumbPath]).catch(() => {});
+      throw new ImageWriteError(`Upload failed: ${error.message}`, false);
+    }
+    return { path, thumbPath: thumb.error ? null : thumbPath };
   }
 
   /* ---- Mutations ---- */
@@ -309,8 +438,11 @@ export class SupabaseBackend implements Backend {
     const albumId = data as string;
 
     if (cover) {
-      const path = await this.upload(albumId, cover);
-      await sb.from('albums').update({ cover_url: path }).eq('id', albumId);
+      const { path, thumbPath } = await this.upload(albumId, 'cv', cover);
+      await sb
+        .from('albums')
+        .update({ cover_url: path, cover_thumb_url: thumbPath })
+        .eq('id', albumId);
     }
 
     return albumId;
@@ -334,7 +466,7 @@ export class SupabaseBackend implements Backend {
 
   async postPhoto(albumId: string, image: PickedImage, caption?: string): Promise<void> {
     const sb = requireSupabase();
-    const path = await this.upload(albumId, image);
+    const { path, thumbPath } = await this.upload(albumId, 'ph', image);
 
     const { error } = await sb.from('photos').insert({
       album_id: albumId,
@@ -342,11 +474,15 @@ export class SupabaseBackend implements Backend {
       day: dayKey(),
       caption: caption?.trim() || null,
       image_path: path,
+      thumb_path: thumbPath,
     });
 
     if (error) {
-      // Clean up the orphaned upload — the row it belonged to never landed.
-      await sb.storage.from(PHOTO_BUCKET).remove([path]).catch(() => {});
+      // Clean up the orphaned uploads — the row they belonged to never landed.
+      await sb.storage
+        .from(PHOTO_BUCKET)
+        .remove(thumbPath ? [path, thumbPath] : [path])
+        .catch(() => {});
       if (error.code === '23505') {
         throw new Error("You've already posted to this album today.");
       }
@@ -368,8 +504,11 @@ export class SupabaseBackend implements Backend {
 
   async setAlbumCover(albumId: string, image: PickedImage): Promise<void> {
     const sb = requireSupabase();
-    const path = await this.upload(albumId, image);
-    const { error } = await sb.from('albums').update({ cover_url: path }).eq('id', albumId);
+    const { path, thumbPath } = await this.upload(albumId, 'cv', image);
+    const { error } = await sb
+      .from('albums')
+      .update({ cover_url: path, cover_thumb_url: thumbPath })
+      .eq('id', albumId);
     if (error) throw new Error(error.message);
   }
 
@@ -419,12 +558,16 @@ export class SupabaseBackend implements Backend {
       return;
     }
 
-    // Avatars live under a per-user folder in the same bucket.
-    const path = `avatars/${this.userId}/${uid('av')}.jpg`;
+    /*
+     * Avatars live under a per-user folder in the same bucket, and only ever
+     * the small copy is stored: the largest an avatar is ever drawn is 72px,
+     * so the full size would be several hundred kilobytes nobody ever sees.
+     */
+    const path = `avatars/${this.userId}/${uid('av')}.${image.ext}`;
     const { error: upErr } = await sb.storage
       .from(PHOTO_BUCKET)
-      .upload(path, dataUrlToBlob(image.dataUrl), {
-        contentType: 'image/jpeg',
+      .upload(path, dataUrlToBlob(image.thumbDataUrl), {
+        contentType: image.ext === 'webp' ? 'image/webp' : 'image/jpeg',
         upsert: true,
       });
     if (upErr) throw new ImageWriteError(`Upload failed: ${upErr.message}`, false);

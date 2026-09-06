@@ -351,6 +351,50 @@ Icons and the launch screen come from `npm run icons`, which renders one drawing
 density buckets ask for. It exists because the web icons and the phone icons
 were briefly two drawings of the same thing that had drifted apart.
 
+## Making the pictures arrive
+
+Three things were making photographs slow, and only one of them was the
+photographs.
+
+**Every image needed its own round trip before it could start.** The bucket is
+private, so each file is fetched through a signed URL, and every `<img>` asked
+for its own — twenty tiles on a screen meant twenty requests to Supabase
+before the first byte of the first photo was even asked for. Signing is now
+batched: React runs a commit's effects in one task, so waiting a single turn
+of the event loop collects the whole screen into one `createSignedUrls` call.
+
+**Every tile downloaded the full-size photograph.** A grid tile is about 170
+CSS pixels; the stored photo is 1400 across. Uploads now write a ~512px copy
+beside the original, and everything that isn't the lightbox asks for that one
+— `useImageSrc` defaults to the small copy, and the full size has to be
+requested by name.
+
+**JPEG.** Photos were already downscaled and re-encoded rather than stored as
+picked, but WebP is materially smaller at the same quality. Encoding is WebP
+where the browser can do it, which is every current Android WebView, and JPEG
+where it can't — asked, not assumed, because `toDataURL` answers an unknown
+type with a silent PNG that would be worse than what it replaced.
+
+Measured on an 1800×1200 source, per tile:
+
+| | before | after |
+|---|---|---|
+| grid tile | 175 KB | **26 KB** |
+| lightbox | 175 KB | 116 KB |
+| requests to start a 20-tile screen | 20 | **1** |
+
+Opening a photo shows the small copy immediately — it is already in the
+browser's cache from the tile that was tapped — and lays the full size over it
+once that decodes, so the wait is a moment of softness rather than an empty
+rectangle.
+
+The suite pins the parts that could silently stop working: that an upload
+leaves exactly two files, that the small one is genuinely smaller (it caught a
+fixture too small to be resized at all, where a thumbnail that saved nothing
+would have passed), that the encoding really is WebP, and that both files
+survive the startup orphan sweep — a sweep that only knew about full sizes
+would delete every thumbnail in the app on the next launch.
+
 ## Telling what happened on the phone
 
 Everything downstream of the compiler was, for a long time, unverifiable:

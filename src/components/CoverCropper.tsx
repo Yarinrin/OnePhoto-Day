@@ -16,9 +16,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from './ui';
 import { useDismissible } from '../lib/dismiss';
+import { encodeScaled, imageExt, type EncodedImage } from '../lib/util';
 
 /** Edge of the baked square, in pixels. */
 const OUT = 900;
+/** An album card draws its cover at about 160px, so this is already generous. */
+const COVER_THUMB = 360;
 
 interface Placement {
   /** Multiplier on top of the scale that just covers the frame. */
@@ -35,7 +38,7 @@ export function CoverCropper({
 }: {
   src: string;
   onCancel: () => void;
-  onDone: (dataUrl: string) => void;
+  onDone: (image: EncodedImage) => void;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -209,7 +212,13 @@ export function CoverCropper({
       if (!ctx) throw new Error('Your browser blocked image processing.');
       // The frame, expressed back in the source image's own pixels.
       ctx.drawImage(img, -place.x / s, -place.y / s, frame / s, frame / s, 0, 0, OUT, OUT);
-      onDone(canvas.toDataURL('image/jpeg', 0.86));
+      // Baked once, encoded twice: the card that shows a cover is a fraction
+      // of the size a cover is stored at.
+      onDone({
+        dataUrl: encodeScaled(canvas, OUT, OUT, OUT, 0.86),
+        thumbDataUrl: encodeScaled(canvas, OUT, OUT, COVER_THUMB, 0.72),
+        ext: imageExt,
+      });
     } catch {
       setWorking(false);
     }

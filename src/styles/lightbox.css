@@ -35,6 +35,7 @@
 }
 
 .lightbox__shot {
+  position: relative; /* the full size is laid over the soft stand-in */
   min-height: 0;
   background: var(--paper-sunk);
   border-bottom: var(--border-thick);
@@ -72,5 +73,29 @@
   .lightbox,
   .lightbox__card {
     animation: none;
+  }
+}
+
+/* The small copy stands in while the full size arrives. It is scaled well
+   past its own resolution, so it is blurred deliberately — a soft picture
+   reads as "loading", a pixellated one reads as "broken". */
+.lightbox__soft {
+  filter: blur(7px);
+  transform: scale(1.03); /* hides the blur's soft edge against the frame */
+}
+
+/* Stacked over the soft copy, revealed once it has actually decoded. */
+.lightbox__pending {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.lightbox__shot img {
+  transition: opacity var(--t-mid) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lightbox__shot img {
+    transition: none;
   }
 }

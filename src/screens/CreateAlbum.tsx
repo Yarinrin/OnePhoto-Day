@@ -12,6 +12,7 @@ import { ACCENTS, type AccentKey } from '../lib/types';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { shareInvite } from '../lib/share';
+import type { EncodedImage } from '../lib/util';
 
 export function CreateAlbum() {
   const { data, commands, toast, busy } = useApp();
@@ -21,7 +22,7 @@ export function CreateAlbum() {
   const [accent, setAccent] = useState<AccentKey>('yellow');
   // Kept in memory until the album is actually created — a cover picked for
   // an album that never gets made shouldn't be stored or uploaded anywhere.
-  const [coverSrc, setCoverSrc] = useState<string | null>(null);
+  const [cover, setCover] = useState<EncodedImage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
   // A pick isn't a cover yet: it goes to the cropper first, and only the
@@ -29,7 +30,7 @@ export function CreateAlbum() {
   const [framing, setFraming] = useState<string | null>(null);
 
   const picker = useImagePicker(
-    (dataUrl) => setFraming(dataUrl),
+    (image) => setFraming(image.dataUrl),
     (message) => toast(message, 'bad'),
   );
 
@@ -50,7 +51,7 @@ export function CreateAlbum() {
       const albumId = await commands.createAlbum(
         trimmed,
         accent,
-        coverSrc ? { dataUrl: coverSrc } : undefined,
+        cover ?? undefined,
       );
       setCreatedId(albumId);
     } catch (err) {
@@ -68,7 +69,7 @@ export function CreateAlbum() {
           src={framing}
           onCancel={() => setFraming(null)}
           onDone={(cropped) => {
-            setCoverSrc(cropped);
+            setCover(cropped);
             setFraming(null);
           }}
         />
@@ -112,13 +113,13 @@ export function CreateAlbum() {
           <p className="field__label">Cover photo — optional</p>
           <button
             type="button"
-            className={`dropzone ${coverSrc ? 'dropzone--filled' : ''}`}
+            className={`dropzone ${cover ? 'dropzone--filled' : ''}`}
             onClick={picker.chooseFile}
-            aria-label={coverSrc ? 'Change cover photo' : 'Add a cover photo'}
+            aria-label={cover ? 'Change cover photo' : 'Add a cover photo'}
           >
-            {coverSrc ? (
+            {cover ? (
               <>
-                <img src={coverSrc} alt="Selected album cover" />
+                <img src={cover.thumbDataUrl} alt="Selected album cover" />
                 <span className="btn btn--sm dropzone__swap">
                   <IconImage size={14} /> Change
                 </span>

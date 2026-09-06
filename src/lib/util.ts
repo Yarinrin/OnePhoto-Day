@@ -92,10 +92,77 @@ export function formatTime(iso: string): string {
 /* ---------------------------------------------------------------- */
 
 /**
- * Read a picked file, downscale it and re-encode as JPEG so a few hundred
- * photos stay comfortably inside browser storage.
+ * How big a photo is kept, and how big a copy is kept for grids.
+ *
+ * A grid tile is around 170 CSS pixels, so on a 3x phone screen 512 is
+ * already more than it can show; the lightbox is full-screen, where 1400
+ * still holds up. Sending the 1400 to a grid — which is what used to happen —
+ * means every tile downloads roughly seven times the pixels it can display,
+ * twenty times over on one screen.
  */
-export function fileToDataUrl(file: File, maxEdge = 1400, quality = 0.82): Promise<string> {
+export const FULL_EDGE = 1400;
+export const THUMB_EDGE = 512;
+
+/**
+ * Whether this browser can *encode* WebP, decided once.
+ *
+ * Every Android WebView since 4.0 can, and so can every current desktop
+ * browser, but `toDataURL` fails soft: hand it a type it doesn't know and it
+ * silently returns a PNG instead, which would be worse than the JPEG it
+ * replaced. So ask it, rather than assume.
+ */
+const canEncodeWebp = (() => {
+  try {
+    const probe = document.createElement('canvas');
+    probe.width = 1;
+    probe.height = 1;
+    return probe.toDataURL('image/webp').startsWith('data:image/webp');
+  } catch {
+    return false;
+  }
+})();
+
+/** The extension the encoded bytes actually are — part of every stored path. */
+export const imageExt: 'webp' | 'jpg' = canEncodeWebp ? 'webp' : 'jpg';
+const imageMime = canEncodeWebp ? 'image/webp' : 'image/jpeg';
+
+/** A picked photo, in the two sizes the app displays it at. */
+export interface EncodedImage {
+  /** Full size, shown in the lightbox. */
+  dataUrl: string;
+  /** Small copy, shown in grids and on cards. */
+  thumbDataUrl: string;
+  ext: 'webp' | 'jpg';
+}
+
+/** Draws a source at most `maxEdge` on its longest side and encodes it. */
+export function encodeScaled(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  maxEdge: number,
+  quality: number,
+): string {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Your browser blocked image processing.');
+  ctx.drawImage(source, 0, 0, w, h);
+  return canvas.toDataURL(imageMime, quality);
+}
+
+/**
+ * Read a picked file and re-encode it at both sizes.
+ *
+ * Both come from one decode of the original: decoding a phone photo is the
+ * expensive part, and doing it twice to produce two sizes would double the
+ * cost of every upload for nothing.
+ */
+export function fileToImage(file: File): Promise<EncodedImage> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       reject(new Error("That file isn't an image."));
@@ -107,20 +174,12 @@ export function fileToDataUrl(file: File, maxEdge = 1400, quality = 0.82): Promi
       const img = new Image();
       img.onerror = () => reject(new Error("We couldn't open that image."));
       img.onload = () => {
-        const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Your browser blocked image processing.'));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
         try {
-          resolve(canvas.toDataURL('image/jpeg', quality));
+          resolve({
+            dataUrl: encodeScaled(img, img.width, img.height, FULL_EDGE, 0.82),
+            thumbDataUrl: encodeScaled(img, img.width, img.height, THUMB_EDGE, 0.7),
+            ext: imageExt,
+          });
         } catch {
           reject(new Error("We couldn't process that image."));
         }

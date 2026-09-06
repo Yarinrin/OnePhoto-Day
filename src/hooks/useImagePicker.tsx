@@ -7,10 +7,10 @@
 
 import { useCallback, useRef, useState } from 'react';
 
-import { fileToDataUrl } from '../lib/util';
+import { fileToImage, type EncodedImage } from '../lib/util';
 
 export function useImagePicker(
-  onPicked: (dataUrl: string) => void | Promise<void>,
+  onPicked: (image: EncodedImage) => void | Promise<void>,
   onError?: (message: string) => void,
 ) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -26,7 +26,7 @@ export function useImagePicker(
       try {
         // Awaited, so a failure inside the handler — a full disk, say —
         // reaches onError instead of escaping as an unhandled rejection.
-        await onPicked(await fileToDataUrl(file));
+        await onPicked(await fileToImage(file));
       } catch (err) {
         onError?.(err instanceof Error ? err.message : "That image wouldn't load.");
       } finally {

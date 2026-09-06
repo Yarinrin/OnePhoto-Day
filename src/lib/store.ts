@@ -69,6 +69,16 @@ export class ImageWriteError extends Error {
   }
 }
 
+/**
+ * The id a picture's small copy is stored under, derived from its own.
+ *
+ * One definition, because two places need to agree: the writer that saves the
+ * pair, and the startup sweep that decides which files are still referenced.
+ * If they ever disagreed, the sweep would delete every thumbnail as an orphan
+ * on the next launch.
+ */
+export const thumbIdFor = (id: string): string => `${id}.t`;
+
 export interface ImageStore {
   /**
    * Writes an image, or throws `ImageWriteError`. Resolves to `false` when the

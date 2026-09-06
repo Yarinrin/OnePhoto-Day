@@ -23,6 +23,7 @@ import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { albumPhotoCount, members } from '../state/selectors';
 import { NotFound } from './NotFound';
+import type { EncodedImage } from '../lib/util';
 
 export function AlbumSettings({ albumId }: { albumId: string }) {
   const { data, commands, toast } = useApp();
@@ -36,14 +37,14 @@ export function AlbumSettings({ albumId }: { albumId: string }) {
 
   // Picking opens the cropper; only the framed result is saved.
   const picker = useImagePicker(
-    (dataUrl) => setFraming(dataUrl),
+    (image) => setFraming(image.dataUrl),
     (message) => toast(message, 'bad'),
   );
 
-  const saveCover = async (dataUrl: string) => {
+  const saveCover = async (image: EncodedImage) => {
     setFraming(null);
     try {
-      await commands.setAlbumCover(albumId, { dataUrl });
+      await commands.setAlbumCover(albumId, image);
       toast('Cover updated', 'ok');
     } catch (err) {
       toast(err instanceof Error ? err.message : "That cover couldn't be saved.", 'bad');

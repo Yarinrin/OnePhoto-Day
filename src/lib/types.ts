@@ -18,10 +18,20 @@ export interface Person {
  * (demo mode); `remote` images are objects in the Supabase storage bucket,
  * addressed by their path within it.
  */
+/*
+ * Where a picture lives, and where its small copy lives.
+ *
+ * `thumbId`/`thumbPath` are optional because photos posted before there were
+ * thumbnails have none, and a missing one is not an error — it just means the
+ * full size is all there is. Nothing may treat its absence as a failure.
+ */
 export type ImageRef =
   | { kind: 'generated'; scene: string; seed: number }
-  | { kind: 'stored'; id: string }
-  | { kind: 'remote'; path: string };
+  | { kind: 'stored'; id: string; thumbId?: string }
+  | { kind: 'remote'; path: string; thumbPath?: string };
+
+/** Which copy of an image a given place on screen wants. */
+export type ImageSize = 'thumb' | 'full';
 
 export interface Photo {
   id: string;

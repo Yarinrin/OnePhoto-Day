@@ -12,7 +12,7 @@ import { IconCamera, IconCheck, IconClock, IconImage, IconRefresh, Sparkle } fro
 import { PageHeader, Screen } from '../components/Shell';
 import { Avatar, Button, EmptyState, TextArea } from '../components/ui';
 import { useImagePicker } from '../hooks/useImagePicker';
-import { formatDayLong, formatTime, timeUntilTomorrow } from '../lib/util';
+import { formatDayLong, formatTime, timeUntilTomorrow, type EncodedImage } from '../lib/util';
 import { useApp } from '../state/AppContext';
 import { useRouter } from '../state/router';
 import { currentUser, hasPostedToday, personAlbumStreak, todayState } from '../state/selectors';
@@ -31,13 +31,13 @@ export function Upload({ albumId }: { albumId: string }) {
   const [stage, setStage] = useState<Stage>('pick');
   // Held in memory only. Nothing is written or uploaded until Post is pressed,
   // so abandoning the flow leaves nothing behind to clean up.
-  const [preview, setPreview] = useState<{ src: string } | null>(null);
+  const [preview, setPreview] = useState<EncodedImage | null>(null);
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
 
   const picker = useImagePicker(
-    (dataUrl) => {
-      setPreview({ src: dataUrl });
+    (image) => {
+      setPreview(image);
       setStage('preview');
     },
     (message) => toast(message, 'bad'),
@@ -132,7 +132,7 @@ export function Upload({ albumId }: { albumId: string }) {
     }
     setPosting(true);
     try {
-      await commands.postPhoto(album.id, { dataUrl: preview.src }, caption);
+      await commands.postPhoto(album.id, preview, caption);
       setStage('done');
     } catch (err) {
       toast(err instanceof Error ? err.message : "That photo didn't post", 'bad');
@@ -184,7 +184,7 @@ export function Upload({ albumId }: { albumId: string }) {
         ) : (
           <>
             <div className="mounted">
-              <img src={preview.src} alt="The photo you're about to post" />
+              <img src={preview.thumbDataUrl} alt="The photo you're about to post" />
               <div className="mounted__strip">
                 <Avatar person={me} size={32} />
                 <span className="mounted__meta">

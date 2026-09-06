@@ -10,16 +10,31 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { renderScene } from '../lib/scenes';
-import type { ImageRef } from '../lib/types';
+import type { ImageRef, ImageSize } from '../lib/types';
 import { useApp } from '../state/AppContext';
 
-export function useImageSrc(ref: ImageRef | undefined | null): string | null {
+/**
+ * `size` defaults to the small copy because almost everywhere an image appears
+ * — grid tiles, album cards, avatars — is small, and a full-size fetch there
+ * costs many times the bytes for pixels the screen cannot show. The lightbox
+ * is the one place that asks for 'full', and it asks explicitly.
+ */
+export function useImageSrc(
+  ref: ImageRef | undefined | null,
+  size: ImageSize = 'thumb',
+): string | null {
   const { backend } = useApp();
 
   // Generated scenes are pure and cached, so they resolve during render.
   const generated = ref?.kind === 'generated' ? renderScene(ref.scene, ref.seed) : null;
+  // The size is part of the identity: asking for the small copy and then the
+  // full one must be two resolutions, not one answer reused.
   const asyncKey =
-    ref?.kind === 'stored' ? `stored:${ref.id}` : ref?.kind === 'remote' ? `remote:${ref.path}` : null;
+    ref?.kind === 'stored'
+      ? `stored:${size}:${ref.id}`
+      : ref?.kind === 'remote'
+        ? `remote:${size}:${ref.path}`
+        : null;
 
   // Stored alongside its key, so a stale result for a previous image can never
   // be shown while the new one loads — and the effect never sets state
@@ -30,7 +45,7 @@ export function useImageSrc(ref: ImageRef | undefined | null): string | null {
     if (!asyncKey || !ref || !backend) return;
     let alive = true;
     backend
-      .resolveImage(ref)
+      .resolveImage(ref, size)
       .then((src) => {
         if (alive) setLoaded({ key: asyncKey, src });
       })
@@ -56,6 +71,7 @@ export function PhotoImage({
   style,
   ratio,
   overlay,
+  size = 'thumb',
 }: {
   image: ImageRef | undefined | null;
   alt: string;
@@ -64,8 +80,14 @@ export function PhotoImage({
   /** aspect-ratio for the frame, e.g. "3 / 4". */
   ratio?: string;
   overlay?: ReactNode;
+  /**
+   * Which copy to fetch. Everything built from this component is a tile in a
+   * grid or a card, so the small one is the default and the full size is
+   * asked for explicitly — by the lightbox, and nowhere else.
+   */
+  size?: ImageSize;
 }) {
-  const src = useImageSrc(image);
+  const src = useImageSrc(image, size);
   return (
     <div
       className={`frame ${className}`}

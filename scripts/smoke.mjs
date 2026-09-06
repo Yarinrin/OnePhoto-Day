@@ -13,6 +13,7 @@
 
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
@@ -35,15 +36,65 @@ function check(name, pass, detail = '') {
   console.log(`${pass ? '  ok  ' : ' FAIL '} ${name}${detail ? `  — ${detail}` : ''}`);
 }
 
-// A tiny real PNG, so the picker and the downscaler run for real.
-const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAWklEQVR4nO3QMQEAAAjDMMC/56EB' +
-    'HLQS6JJK7bMDXhkyzJAxw4YMG2bIsGGGDBs2zJBhwwwZNsyQYcMMGTbMkGHDDBk2zJBhwwwZNsyQ' +
-    'YcMMGTbMkGHDDBk2zJDhwwsPUAABsp3ZKgAAAABJRU5ErkJggg==',
-  'base64',
-);
+/*
+ * A photo-sized PNG, built here rather than committed.
+ *
+ * It has to be bigger than the sizes the app resizes to (1400 full, 512
+ * thumbnail) or nothing is exercised: a 100px fixture is below both, so both
+ * copies come out at 1:1 and a thumbnail that saved nothing would still look
+ * correct. It also needs real detail — a flat colour compresses to almost
+ * nothing at any size, which hides the difference just as well.
+ */
+function makePng(width, height) {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  const crc = (buf) => {
+    let c = -1;
+    for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  };
+  const chunk = (type, body) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(body.length);
+    const typed = Buffer.concat([Buffer.from(type, 'ascii'), body]);
+    const tail = Buffer.alloc(4);
+    tail.writeUInt32BE(crc(typed));
+    return Buffer.concat([head, typed, tail]);
+  };
+
+  // One filter byte then RGB per row. A gradient with a coarse checker over it
+  // gives the encoder both smooth areas and hard edges, like a real picture.
+  const raw = Buffer.alloc(height * (1 + width * 3));
+  let at = 0;
+  for (let y = 0; y < height; y++) {
+    raw[at++] = 0;
+    for (let x = 0; x < width; x++) {
+      const block = ((x >> 5) + (y >> 5)) % 2 ? 40 : 0;
+      raw[at++] = ((x / width) * 255) | 0;
+      raw[at++] = (((y / height) * 255) | 0) ^ block;
+      raw[at++] = ((x + y) % 256 ^ block) & 0xff;
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // truecolour
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
 const PNG_PATH = path.join(process.env.TMPDIR ?? '/tmp', 'opd-smoke.png');
-fs.writeFileSync(PNG_PATH, PNG);
+fs.writeFileSync(PNG_PATH, makePng(1800, 1200));
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || undefined,
@@ -348,7 +399,49 @@ for (const [label, opts] of [
     );
 
   const stored = await countImages();
-  check('an uploaded image reaches IndexedDB', stored === 1, `${stored} stored`);
+  // Two files per photo: the full size for the lightbox, and the small copy
+  // that grids and cards actually draw.
+  check('an uploaded photo is stored at both sizes', stored === 2, `${stored} stored`);
+
+  // The point of the pair is that one of them is small. Read them back and
+  // compare: a "thumbnail" the same weight as the photo would pass every
+  // other check here while saving nothing.
+  const pair = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const req = indexedDB.open('opd-images', 1);
+        req.onsuccess = () => {
+          const store = req.result.transaction('images', 'readonly').objectStore('images');
+          const keys = store.getAllKeys();
+          keys.onsuccess = () => {
+            const all = store.getAll();
+            all.onsuccess = () => {
+              const byKey = Object.fromEntries(
+                keys.result.map((k, i) => [String(k), all.result[i]]),
+              );
+              const fullKey = Object.keys(byKey).find((k) => !k.endsWith('.t'));
+              const thumbKey = Object.keys(byKey).find((k) => k.endsWith('.t'));
+              resolve({
+                full: byKey[fullKey ?? '']?.length ?? 0,
+                thumb: byKey[thumbKey ?? '']?.length ?? 0,
+                format: (byKey[thumbKey ?? ''] ?? '').slice(5, 15),
+              });
+            };
+          };
+        };
+        req.onerror = () => resolve(null);
+      }),
+  );
+  check(
+    'the small copy is genuinely smaller',
+    pair && pair.thumb > 0 && pair.thumb < pair.full,
+    `${pair?.thumb} vs ${pair?.full} bytes`,
+  );
+  check(
+    'images are encoded as WebP',
+    pair?.format?.startsWith('image/webp'),
+    pair?.format,
+  );
 
   const albumId = await page.evaluate(() => {
     const d = JSON.parse(localStorage.getItem('opd.data.v1'));
@@ -379,7 +472,11 @@ for (const [label, opts] of [
   await page.waitForTimeout(800);
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
-  check('a live photo survives collection', (await countImages()) === 1);
+  // Both halves must survive. The small copy is a separate file with no row
+  // of its own, so a sweep that only knew about full sizes would delete every
+  // thumbnail in the app on the next launch.
+  const kept = await countImages();
+  check('a live photo survives collection, thumbnail included', kept === 2, `${kept} kept`);
 
   await ctx.close();
 }

@@ -4,6 +4,8 @@
  * with it.
  */
 
+import { useEffect, useState } from 'react';
+
 import { IconX } from './Icons';
 import { useImageSrc } from './PhotoImage';
 import { Avatar, IconButton } from './ui';
@@ -22,7 +24,21 @@ export function Lightbox({
   onClose: () => void;
 }) {
   const { data } = useApp();
-  const src = useImageSrc(photo?.image);
+  /*
+   * Both copies, on purpose.
+   *
+   * The small one was already fetched to draw the tile the user just tapped,
+   * so it is in the browser's cache and paints immediately — the picture is
+   * on screen while the full size is still being signed and downloaded, and
+   * the difference is a moment of softness rather than an empty rectangle.
+   */
+  const thumb = useImageSrc(photo?.image, 'thumb');
+  const full = useImageSrc(photo?.image, 'full');
+  const [sharp, setSharp] = useState(false);
+
+  // A new photo starts soft again: the previous one's full size is loaded,
+  // which would otherwise mark this one sharp before it has arrived.
+  useEffect(() => setSharp(false), [photo?.id]);
 
   useDismissible(Boolean(photo), onClose);
 
@@ -43,8 +59,18 @@ export function Lightbox({
     >
       <div className="lightbox__card">
         <div className="lightbox__shot">
-          {src ? (
-            <img src={src} alt={`${author?.name ?? 'A member'}'s photo from ${formatDayLong(photo.day)}`} />
+          {thumb || full ? (
+            <>
+              {thumb && !sharp && <img className="lightbox__soft" src={thumb} alt="" aria-hidden />}
+              {full && (
+                <img
+                  className={sharp ? '' : 'lightbox__pending'}
+                  src={full}
+                  onLoad={() => setSharp(true)}
+                  alt={`${author?.name ?? 'A member'}'s photo from ${formatDayLong(photo.day)}`}
+                />
+              )}
+            </>
           ) : (
             <div className="frame__skeleton" style={{ aspectRatio: '3 / 4' }} />
           )}
